@@ -19,6 +19,7 @@ dependencies = [
     "adc-logger",
     "adc-aiopg",
     "adc-aios3",
+    "python-jose[cryptography]",
 
     # Settings and validation
     "pydantic-settings>=2.2.0",
