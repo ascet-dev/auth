@@ -8,8 +8,6 @@ from models.enums import SessionStatus
 
 
 class Session(BaseModel):
-    __tablename__ = "auth_sessions"
-
     identity_id: UUID = Field(foreign_key="auth_identities.id")
 
     client_app_id: UUID = Field(

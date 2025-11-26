@@ -3,9 +3,7 @@ from sqlmodel import Field
 from models.base import BaseModel
 
 
-class AuthOauthProvider(BaseModel, table=True):
-    __tablename__ = "auth_oauth_providers"
-
+class AuthOauthProvider(BaseModel):
     name: str = Field(description="Системное имя провайдера: 'google', 'apple', 'vk', 'github'")
 
     client_id: str

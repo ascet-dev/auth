@@ -33,22 +33,25 @@ class RegisterPassword(JsonEndpoint):
 class LoginByPassword(JsonEndpoint):
     doc = Doc(tags=["auth", "password"], summary="Login by password")
 
-    # body = s.LoginByPasswordRequest  # TODO
-    # response = Response(s.SessionWithTokens)  # TODO
-    response = Response(dict)
+    body = s.LoginByPasswordRequest
+    response = Response(s.SessionWithTokens)
 
     async def execute(self, ctx: Ctx) -> dict:
         app: App = ctx.request.app.state.app
 
-        # TODO:
-        # session, tokens = await app.login_by_password(
-        #     identifier=ctx.body.identifier,
-        #     password=ctx.body.password,
-        # )
-        # return {
-        #     "session": session,
-        #     "access_token": tokens[0],
-        #     "refresh_token": tokens[1],
-        # }
+        # Получаем IP и User-Agent из запроса
+        ip_address = ctx.request.client.host if ctx.request.client else None
+        user_agent = ctx.request.headers.get("user-agent")
 
-        return {"todo": "login by password"}
+        session, tokens = await app.login_by_password(
+            identifier=ctx.body.login,
+            password=ctx.body.password,
+            client_app_id=ctx.body.client_app_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        return {
+            "session": session.model_dump(exclude={"refresh_token_hash"}),
+            "access_token": tokens[0],
+            "refresh_token": tokens[1],
+        }

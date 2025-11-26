@@ -13,11 +13,14 @@ from models.session import Session
 
 
 class DAO(PostgresAccessLayer, metadata=m.base.meta):
-    identities = TableDescriptor[AuthIdentity](AuthIdentity)
-    credentials = TableDescriptor[Credential](Credential)
-    sessions = TableDescriptor[Session](Session)
-    client_apps = TableDescriptor[ClientApp](ClientApp)
-    oauth_providers = TableDescriptor[AuthOauthProvider](AuthOauthProvider)
-    otp_challenges = TableDescriptor[AuthOtpChallenge](AuthOtpChallenge)
-    identity_external_links = TableDescriptor[AuthIdentityExternalLink](AuthIdentityExternalLink)
-    logins = TableDescriptor[Login](Login)
+    identities = TableDescriptor[AuthIdentity](AuthIdentity, table_name="auth_identities")
+    credentials = TableDescriptor[Credential](Credential, table_name="auth_credentials")
+    sessions = TableDescriptor[Session](Session, table_name="auth_sessions")
+    client_apps = TableDescriptor[ClientApp](ClientApp, table_name="auth_client_apps")
+    oauth_providers = TableDescriptor[AuthOauthProvider](AuthOauthProvider, table_name="auth_oauth_providers")
+    otp_challenges = TableDescriptor[AuthOtpChallenge](AuthOtpChallenge, table_name="auth_otp_challenges")
+    identity_external_links = TableDescriptor[AuthIdentityExternalLink](
+        AuthIdentityExternalLink,
+        table_name="auth_identity_external_links",
+    )
+    logins = TableDescriptor[Login](Login, table_name="auth_logins")

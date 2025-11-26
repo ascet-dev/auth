@@ -2,33 +2,33 @@ from enum import Enum
 
 
 class IdentityStatus(str, Enum):
-    ACTIVE = "active"
-    BLOCKED = "blocked"
-    DELETED = "deleted"
+    ACTIVE = "ACTIVE"
+    BLOCKED = "BLOCKED"
+    DELETED = "DELETED"
 
 
 class CredentialType(str, Enum):
-    PASSWORD = "password"  # noqa: S105
-    OTP_PHONE = "otp_phone"
-    OTP_EMAIL = "otp_email"
-    OAUTH = "oauth"
-    API_KEY = "api_key"
+    PASSWORD = "PASSWORD"  # noqa: S105
+    OTP_PHONE = "OTP_PHONE"
+    OTP_EMAIL = "OTP_EMAIL"
+    OAUTH = "OAUTH"
+    API_KEY = "API_KEY"
 
 
 class SessionStatus(str, Enum):
-    ACTIVE = "active"
-    REVOKED = "revoked"
-    EXPIRED = "expired"
-    COMPROMISED = "compromised"
+    ACTIVE = "ACTIVE"
+    REVOKED = "REVOKED"
+    EXPIRED = "EXPIRED"
+    COMPROMISED = "COMPROMISED"
 
 
 class OtpChannel(str, Enum):
-    SMS = "sms"
-    EMAIL = "email"
-    WHATSAPP = "whatsapp"
-    TELEGRAM = "telegram"
+    SMS = "SMS"
+    EMAIL = "EMAIL"
+    WHATSAPP = "WHATSAPP"
+    TELEGRAM = "TELEGRAM"
 
 
 class AuthClientType(str, Enum):
-    PUBLIC = "public"
-    CONFIDENTIAL = "confidential"
+    PUBLIC = "PUBLIC"
+    CONFIDENTIAL = "CONFIDENTIAL"

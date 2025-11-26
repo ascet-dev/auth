@@ -11,8 +11,6 @@ from models.enums import CredentialType
 
 
 class Credential(BaseModel):
-    __tablename__ = "auth_credentials"
-
     identity_id: UUID = Field(foreign_key="auth_identities.id")
 
     type: CredentialType = Field(default=CredentialType.PASSWORD)
@@ -35,7 +33,10 @@ class Credential(BaseModel):
     # для OAuth: subject/id от провайдера
     external_subject_id: str | None = Field(default=None)
 
-    meta: dict[str, t.Any] | None = Field(default_factory=dict, sa_column=Column(JSONB))
+    meta: dict[str, t.Any] | None = Field(
+        default=None,
+        sa_column=Column(JSONB),
+    )
 
     failed_attempts: int = Field(default=0)
     locked_until: datetime | None = Field(default=None)

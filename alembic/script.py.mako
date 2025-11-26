@@ -20,7 +20,7 @@ depends_on = ${repr(depends_on)}
 
 def upgrade():
     op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
-    op.execute('CREATE SCHEMA IF NOT EXISTS fitness')
+    op.execute('CREATE SCHEMA IF NOT EXISTS ${schema_name}')
     ${upgrades if upgrades else "pass"}
 
 

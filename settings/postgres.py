@@ -12,4 +12,4 @@ class Connection(BaseSettings):
 
 class PG(BaseSettings):
     connection: Connection = Connection()
-    schema_name: str = "fitness"
+    schema_name: str = "auth"

@@ -6,7 +6,12 @@ from .base import BaseModel
 
 
 class Login(BaseModel):
-    __tablename__ = "auth_logins"
+    method: str = Field(description="Метод входа: 'password', 'otp', 'oauth' и т.д.")
+
+    identifier: str | None = Field(
+        default=None,
+        description="Идентификатор для входа (email, phone, username и т.д.)",
+    )
 
     identity_id: UUID | None = Field(
         default=None,
@@ -19,10 +24,6 @@ class Login(BaseModel):
         foreign_key="auth_credentials.id",
         description="Credential, через который была попытка входа",
     )
-
-    method: str = Field(description="Метод входа: 'password', 'otp', 'oauth' и т.д.")
-
-    attempt: int = Field(description="Номер попытки (для rate limiting)")
 
     success: bool = Field(description="Успешна ли попытка входа")
 
