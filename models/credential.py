@@ -2,6 +2,7 @@ import typing as t
 from datetime import datetime
 from uuid import UUID
 
+from adc_aiopg.enum import sqla_enum
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field
@@ -13,7 +14,7 @@ from models.enums import CredentialType
 class Credential(BaseModel):
     identity_id: UUID = Field(foreign_key="auth_identities.id")
 
-    type: CredentialType = Field(default=CredentialType.PASSWORD)
+    type: CredentialType = Field(default=CredentialType.PASSWORD, sa_column=sqla_enum(CredentialType).sa_column)
 
     # чем идентифицируем логин: email / phone / username и т.п.
     identifier: str | None = Field(

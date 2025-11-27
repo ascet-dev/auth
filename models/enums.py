@@ -1,13 +1,19 @@
 from enum import Enum
 
+from models.base import meta
+
 
 class IdentityStatus(str, Enum):
+    __meta__ = meta
+
     ACTIVE = "ACTIVE"
     BLOCKED = "BLOCKED"
     DELETED = "DELETED"
 
 
 class CredentialType(str, Enum):
+    __meta__ = meta
+
     PASSWORD = "PASSWORD"  # noqa: S105
     OTP_PHONE = "OTP_PHONE"
     OTP_EMAIL = "OTP_EMAIL"
@@ -16,6 +22,8 @@ class CredentialType(str, Enum):
 
 
 class SessionStatus(str, Enum):
+    __meta__ = meta
+
     ACTIVE = "ACTIVE"
     REVOKED = "REVOKED"
     EXPIRED = "EXPIRED"
@@ -23,6 +31,8 @@ class SessionStatus(str, Enum):
 
 
 class OtpChannel(str, Enum):
+    __meta__ = meta
+
     SMS = "SMS"
     EMAIL = "EMAIL"
     WHATSAPP = "WHATSAPP"
@@ -30,5 +40,7 @@ class OtpChannel(str, Enum):
 
 
 class AuthClientType(str, Enum):
+    __meta__ = meta
+
     PUBLIC = "PUBLIC"
     CONFIDENTIAL = "CONFIDENTIAL"

@@ -2,6 +2,7 @@ import asyncio
 import platform
 from logging import getLogger
 
+from adc_appkit.components.pg import PG
 import click
 import sentry_sdk
 
@@ -55,6 +56,25 @@ def apply_sql(file_path: str) -> None:
         asyncio.run(do())
     except KeyboardInterrupt:
         logger.critical("Command stopped by user")
+
+
+@cli.command(short_help="seed data")
+def seed_data() -> None:
+    """Add test data (admin:admin user)"""
+
+    async def do() -> None:
+        async with PG(config=cfg.pg.connection.model_dump()) as pool:
+            with open("data/init_data.sql") as file:
+                sql_script = file.read()
+            res = await pool.execute(sql_script)
+            logger.debug(res)
+
+    try:
+        asyncio.run(do())
+    except KeyboardInterrupt:
+        logger.critical("Command stopped by user")
+    except Exception as e:
+        logger.error(e)
 
 
 if __name__ == "__main__":

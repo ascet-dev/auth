@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
+from adc_aiopg.enum import sqla_enum
 from sqlmodel import Field
 
 from models.base import BaseModel
@@ -17,7 +18,7 @@ class Session(BaseModel):
     refresh_token_hash: str = Field(description="Хэш refresh-токена (сам токен хранится у клиента)")
     refresh_expires_at: datetime
 
-    status: SessionStatus = Field(default=SessionStatus.ACTIVE)
+    status: SessionStatus = sqla_enum(SessionStatus, default=SessionStatus.ACTIVE)
 
     last_used_at: datetime | None = Field(default=None)
 

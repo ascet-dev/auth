@@ -4,6 +4,7 @@ import typing as t
 from datetime import datetime
 from uuid import UUID
 
+from adc_aiopg.enum import sqla_enum
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field
@@ -19,7 +20,7 @@ class AuthOtpChallenge(BaseModel):
         description="Может быть NULL, если identity ещё не создана",
     )
 
-    channel: OtpChannel
+    channel: OtpChannel = Field(sa_column=sqla_enum(OtpChannel).sa_column)
     destination: str = Field(description="Телефон или email, на который отправлен код")
 
     code_hash: str = Field(description="Хэш OTP-кода")
