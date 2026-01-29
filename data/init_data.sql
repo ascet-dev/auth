@@ -1,23 +1,27 @@
 -- Скрипт для добавления тестовых данных: client_app и admin пользователя
 -- Создаём тестовый client_app (если его ещё нет)
 INSERT INTO auth.auth_client_apps (
-        key,
-        name,
-        type,
-        allowed_redirect_uris,
-        allowed_scopes,
-        access_token_ttl_sec,
-        refresh_token_ttl_sec
-    )
-VALUES (
-        'test-app',
-        'Test Application',
-        'PUBLIC',
-        ARRAY []::text [],
-        ARRAY []::text [],
-        900,
-        2592000
-    ) ON CONFLICT (key) DO NOTHING;
+    key,
+    name,
+    type,
+    allowed_redirect_uris,
+    allowed_scopes,
+    access_token_ttl_sec,
+    refresh_token_ttl_sec
+)
+SELECT
+    'test-app',
+    'Test Application',
+    'PUBLIC',
+    ARRAY []::text [],
+    ARRAY []::text [],
+    900,
+    2592000
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM auth.auth_client_apps
+    WHERE key = 'test-app'
+);
 -- Создаём admin пользователя (если его ещё нет)
 DO $$
 DECLARE v_identity_id UUID;

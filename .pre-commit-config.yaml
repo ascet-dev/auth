@@ -1,49 +1,59 @@
----
+# Pre-commit: https://pre-commit.com
+# Run: pre-commit run --all-files
+# Install: pre-commit install
+default_language_version:
+  python: python3.12
+
 repos:
+  # -------------------------------------------------------------------------
+  # General hooks (fast, no extra deps)
+  # -------------------------------------------------------------------------
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v4.6.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
       - id: check-yaml
-      - id: check-added-large-files
-      - id: check-merge-conflict
-      - id: check-case-conflict
-      - id: check-docstring-first
       - id: check-json
       - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-ast
       - id: debug-statements
+      - id: detect-private-key
       - id: name-tests-test
-      - id: requirements-txt-fixer
+        args: ["--pytest-test-first"]
 
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
-    hooks:
-      - id: black
-        language_version: python3.11
-
-  - repo: https://github.com/pycqa/isort
-    rev: 6.0.1
-    hooks:
-      - id: isort
-        args: ["--profile", "black"]
-
+  # -------------------------------------------------------------------------
+  # Ruff: lint + format (replaces black, isort, flake8)
+  # -------------------------------------------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.1
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
 
+  # -------------------------------------------------------------------------
+  # Type checking
+  # -------------------------------------------------------------------------
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.16.1
+    rev: v1.13.0
     hooks:
       - id: mypy
-        additional_dependencies: [types-all]
-        args: [--ignore-missing-imports]
+        args: [--ignore-missing-imports, web, models, services, settings]
+        pass_filenames: false
 
+  # -------------------------------------------------------------------------
+  # Security (optional, run on full repo)
+  # -------------------------------------------------------------------------
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.5
+    rev: 1.8.0
     hooks:
       - id: bandit
-        args: ["-r", ".", "-f", "json", "-o", "bandit-report.json"]
-        exclude: ^tests/ 
+        args: ["-r", "web", "models", "services", "settings", "-ll", "-q"]
+        pass_filenames: false

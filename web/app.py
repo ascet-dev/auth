@@ -32,6 +32,7 @@ class WebApp(Web):
         Route("POST", "/auth/session/refresh", e.RefreshSession),
         Route("POST", "/auth/session/logout", e.Logout),
         Route("GET", "/auth/sessions", e.ListSessions),
+        Route("DELETE", "/auth/sessions/{session_id}", e.RevokeSession),
         Route("POST", "/auth/sessions/revoke-all", e.RevokeAllSessions),
         # identity
         Route("POST", "/auth/identity", e.CreateIdentity),

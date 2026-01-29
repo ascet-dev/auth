@@ -14,4 +14,8 @@ class Client(Base):
     type: str
 
 
-jwt = JWT(public_key=cfg.auth.public_key, payload_model=Client)
+jwt = JWT(
+    public_key=cfg.auth.public_key,
+    payload_model=Client,
+    algorithms=cfg.auth.algorithms,
+)

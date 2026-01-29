@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-cov lint format type-check security clean docs docker-build docker-run docker-stop
+.PHONY: help install install-dev test test-cov lint lint-fix format type-check security check quality pre-commit commit-check clean docs docker-build docker-run docker-stop
 
 # Default target
 help: ## Show this help message
@@ -84,34 +84,33 @@ test-watch: ## Run tests in watch mode
 #                             Code Quality                                    #
 #=============================================================================#
 
-lint: ## Run all linters
-	uv run ruff check .
-	uv run black --check .
-	uv run isort --check-only .
+# Same scope as pre-commit: web, models, services, settings, manage.py
+SRC_DIRS = web models services settings
+SRC_FILES = $(SRC_DIRS) manage.py
 
-lint-fix: ## Fix linting issues
+lint: ## Run linter (ruff check)
+	uv run ruff check $(SRC_FILES)
+
+lint-fix: ## Fix linting issues (ruff check --fix)
 	@echo "🔧 Fixing linting issues..."
-	uv run ruff check --fix --diff .
-	uv run black --diff .
-	uv run isort --diff .
+	uv run ruff check $(SRC_FILES) --fix
 
-format: ## Format code
-	uv run black .
-	uv run isort .
+format: ## Format code (ruff format)
+	uv run ruff format $(SRC_FILES)
 
-type-check: ## Run type checking
-	uv run mypy .
+type-check: ## Run type checking (mypy)
+	uv run mypy $(SRC_DIRS)
 
-security: ## Run security checks
-	uv run bandit -r .
+security: ## Run security checks (bandit)
+	uv run bandit -r $(SRC_DIRS) -ll -q
 
-quality: ## Run all quality checks
-	@echo "🔍 Running quality checks..."
-	uv run ruff check .
-	uv run black --check .
-	uv run isort --check-only .
-	uv run mypy .
-	uv run bandit -r . -f json -o bandit-report.json --exclude tests
+check: lint format type-check security ## Run all checks (lint + format + mypy + bandit)
+	@echo "✅ All checks passed!"
+
+quality: check ## Alias for check
+	@echo "✅ Quality checks passed!"
+
+pre-commit: ## Run pre-commit on all files (if pre-commit works on your system)
 	uv run pre-commit run --all-files --show-diff-on-failure --color always
 
 #=============================================================================#
@@ -287,21 +286,13 @@ init: ## Install dependencies and start infrastructure
 check-all: test-cov lint type-check security ## Run all checks
 	@echo "All checks passed! ✅"
 
-pre-commit: ## Run pre-commit hooks, linting and tests on all files
-	uv run pre-commit run --all-files
-	uv run ruff check .
-	uv run black --check .
-	uv run isort --check-only .
-	uv run mypy .
+commit-check: check ## Run all checks + tests (use before commit)
 	uv run pytest
 	@echo "Ready to commit! ✅"
 
-pre-commit-changed: ## Run pre-commit hooks, linting and tests on staged files only
+pre-commit-changed: ## Run pre-commit on staged files only (if pre-commit works)
 	uv run pre-commit run
-	uv run ruff check --diff .
-	uv run black --check --diff .
-	uv run isort --check-only --diff .
-	uv run mypy .
+	$(MAKE) check
 	uv run pytest
 	@echo "Ready to commit! ✅"
 
@@ -403,14 +394,8 @@ reset: ## Reset project to clean state (stop infra + remove venv + clean all)
 #                  Comprehensive Quality Checks                               #
 #=============================================================================#
 
-quality-all: ## Run all quality checks and tests
+quality-all: check ## Run all quality checks and tests
 	@echo "🔍 Running all quality checks and tests..."
-	uv run ruff check .
-	uv run black --check .
-	uv run isort --check-only .
-	uv run mypy .
-	uv run bandit -r . -f json -o bandit-report.json --exclude tests
-	uv run pre-commit run --all-files --show-diff-on-failure --color always
 	uv run pytest
 
 #=============================================================================#

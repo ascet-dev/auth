@@ -1,12 +1,9 @@
 from logging import getLogger
-from uuid import UUID
 
 from adc_webkit.web import Ctx, JsonEndpoint, Response
 from adc_webkit.web.openapi import Doc
 
 from services import App
-
-from . import schemas as s  # TODO
 
 logger = getLogger(__name__)
 

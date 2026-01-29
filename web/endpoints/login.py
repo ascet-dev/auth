@@ -18,5 +18,5 @@ class LoginByPassword(JsonEndpoint):
 
     async def execute(self, ctx: Ctx) -> dict:
         app: App = ctx.request.app.state.app
-        await app.do()
+        # TODO: use app.login_by_password or redirect to /auth/login/password
         return {"status": "ok"}

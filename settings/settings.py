@@ -25,3 +25,4 @@ class CFG(BaseSettings):
         env_file = ".env" if ENV == "LOCAL" else None
         env_file_encoding = "utf-8"
         env_nested_delimiter = "__"
+        extra = "ignore"

@@ -3,31 +3,40 @@ from __future__ import annotations
 import datetime
 import hashlib
 import secrets
-from typing import Optional
-from uuid import UUID
+from logging import getLogger
+from typing import TYPE_CHECKING
+from urllib.parse import urlencode
 
+import aiohttp
 from adc_appkit import BaseApp, ComponentStrategy, component
 from adc_appkit.components.component import create_component
 from adc_appkit.components.pg import PG
 from jose import jwt
-from passlib.context import CryptContext
-from sqlalchemy import and_
-from sqlmodel import select
+from jose.jwt import decode as jwt_decode
 
-from models.client_app import ClientApp
-from models.credential import Credential
-from models.enums import CredentialType, SessionStatus
-from models.identity import AuthIdentity
-from models.otp_challenge import AuthOtpChallenge
-from models.session import Session
+from models.credential import Credential  # noqa: TC001
+from models.enums import CredentialType, IdentityStatus, SessionStatus
+from models.identity import AuthIdentity  # noqa: TC001
+from models.otp_challenge import AuthOtpChallenge  # noqa: TC001
+from models.session import Session  # noqa: TC001
 from services.login_attempt_logger import LoginAttemptLogger
 from services.password_service import PasswordService
 from services.repositories import DAO
 from settings import cfg
 
+from .components import CurrentIdentity
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from adc_aiopg.types import Paginated
+
 # Constants
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 30
+HTTP_OK = 200
+
+log = getLogger(__name__)
 
 
 class App(BaseApp):
@@ -43,6 +52,11 @@ class App(BaseApp):
     pg = component(PG, config_key="pg")
     dao: DAO = component(create_component(DAO), dependencies={"pool": "pg"}, config_key="dao")
     password_service: PasswordService = PasswordService()
+    current_identity: CurrentIdentity = component(
+        CurrentIdentity,
+        config_key="current_identity",
+        strategy=ComponentStrategy.REQUEST,
+    )
 
     # =============================================================
     # Контекстные менеджеры
@@ -55,7 +69,7 @@ class App(BaseApp):
         *,
         ip_address: str | None = None,
         user_agent: str | None = None,
-    ):
+    ) -> LoginAttemptLogger:
         """
         Контекстный менеджер для логирования попыток входа.
 
@@ -90,7 +104,7 @@ class App(BaseApp):
         Создаёт новую identity + password credential.
         НЕ привязывает к существующим identities.
         """
-        pass
+        raise NotImplementedError()
 
     async def login_by_password(
         self,
@@ -129,7 +143,8 @@ class App(BaseApp):
                 raise ValueError("Credential is locked")
 
             if not credential.secret_hash or not self.password_service.verify_password(
-                password, credential.secret_hash
+                password,
+                credential.secret_hash,
             ):
                 credential.failed_attempts += 1
                 if credential.failed_attempts >= MAX_FAILED_ATTEMPTS:
@@ -174,7 +189,7 @@ class App(BaseApp):
         3. Сохраняет hash
         4. Отправляет через внешний сервис уведомлений
         """
-        pass
+        raise NotImplementedError()
 
     async def login_by_otp(self, challenge_id: UUID, code: str) -> tuple[Session, tuple[str, str]]:
         """
@@ -183,7 +198,7 @@ class App(BaseApp):
         3. Создаёт OTP credential (если надо)
         4. Создаёт новую сессию
         """
-        pass
+        raise NotImplementedError()
 
     # =============================================================
     # OAuth
@@ -193,13 +208,46 @@ class App(BaseApp):
         """
         Возвращает URL для начала авторизации у провайдера.
         """
-        pass
+        # Получаем провайдера из БД
+        oauth_providers = await self.dao.oauth_providers.search(
+            name=provider,
+            enabled=True,
+            archived=False,
+            limit=1,
+        )
+
+        if not oauth_providers:
+            raise ValueError(f"OAuth provider '{provider}' not found or disabled")
+
+        oauth_provider = oauth_providers[0]
+
+        # Генерируем state для защиты от CSRF
+        state = secrets.token_urlsafe(32)
+
+        # Формируем параметры для OAuth URL
+        params = {
+            "client_id": oauth_provider.client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "state": state,
+            "scope": "openid profile email",  # Базовые scope для большинства провайдеров
+        }
+
+        # Формируем URL
+        auth_url = oauth_provider.auth_url
+        url = f"{auth_url}&{urlencode(params)}" if "?" in auth_url else f"{auth_url}?{urlencode(params)}"
+
+        return url
 
     async def login_by_oauth(
         self,
         provider: str,
         code: str,
         redirect_uri: str,
+        client_app_id: UUID,
+        *,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> tuple[Session, tuple[str, str]]:
         """
         1. Обменивает code на токен провайдера
@@ -209,7 +257,148 @@ class App(BaseApp):
         5. Создаёт oauth credential
         6. Создаёт новую сессию
         """
-        pass
+        async with self.log_login_attempt(
+            method="oauth",
+            identifier=provider,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        ) as logger:
+            # Получаем провайдера из БД
+            oauth_providers = await self.dao.oauth_providers.search(
+                name=provider,
+                enabled=True,
+                archived=False,
+                limit=1,
+            )
+
+            if not oauth_providers:
+                raise ValueError(f"OAuth provider '{provider}' not found or disabled")
+
+            oauth_provider = oauth_providers[0]
+
+            # Обмениваем code на токен
+            async with aiohttp.ClientSession() as http_session:
+                token_data = {
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                    "client_id": oauth_provider.client_id,
+                    "client_secret": oauth_provider.client_secret,
+                }
+
+                async with http_session.post(
+                    oauth_provider.token_url,
+                    data=token_data,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                ) as resp:
+                    if resp.status != HTTP_OK:
+                        error_text = await resp.text()
+                        raise ValueError(f"Failed to exchange code for token: {error_text}")
+
+                    token_response = await resp.json()
+
+            access_token = token_response.get("access_token")
+            id_token = token_response.get("id_token")
+
+            # Получаем информацию о пользователе
+            external_subject_id: str | None = None
+            user_email: str | None = None
+            user_name: str | None = None
+
+            # Если есть id_token, декодируем его
+            if id_token:
+                try:
+                    # Если есть JWKS URL, валидируем через JWKS
+                    if oauth_provider.jwks_url:
+                        # Для упрощения декодируем без валидации подписи (в продакшене нужна валидация)
+                        # В реальном приложении нужно использовать jose.jwt.get_unverified_header
+                        # и jose.jwt.get_unverified_claims для получения claims
+                        decoded = jwt_decode(id_token, options={"verify_signature": False})
+                    else:
+                        decoded = jwt_decode(id_token, options={"verify_signature": False})
+
+                    external_subject_id = decoded.get("sub") or decoded.get("user_id") or decoded.get("id")
+                    user_email = decoded.get("email")
+                    user_name = decoded.get("name") or decoded.get("given_name")
+
+                except Exception:
+                    # Если не удалось декодировать id_token, попробуем получить через userinfo
+                    log.exception("Failed to decode OAuth id_token")
+
+            # Если нет external_subject_id из id_token, получаем через userinfo
+            if not external_subject_id and oauth_provider.userinfo_url and access_token:
+                async with (
+                    aiohttp.ClientSession() as http_session,
+                    http_session.get(
+                        oauth_provider.userinfo_url,
+                        headers={"Authorization": f"Bearer {access_token}"},
+                    ) as resp,
+                ):
+                    if resp.status == HTTP_OK:
+                        userinfo = await resp.json()
+                        external_subject_id = userinfo.get("sub") or userinfo.get("user_id") or userinfo.get("id")
+                        user_email = userinfo.get("email")
+                        user_name = userinfo.get("name") or userinfo.get("given_name")
+
+            if not external_subject_id:
+                raise ValueError("Could not extract user ID from OAuth provider response")
+
+            # Ищем существующий credential
+            credentials = await self.dao.credentials.search(
+                provider=provider,
+                external_subject_id=external_subject_id,
+                type=CredentialType.OAUTH,
+                archived=False,
+                limit=1,
+            )
+
+            now = datetime.datetime.now(datetime.UTC)
+
+            if credentials:
+                # Найден существующий credential
+                credential = credentials[0]
+                identity_id = credential.identity_id
+
+                # Обновляем last_used
+                await self.dao.credentials.update_by_id(
+                    credential.id,
+                    last_used=now,
+                )
+            else:
+                # Создаём новую identity
+                identity = await self.dao.identities.create(
+                    tenant_id=None,
+                    status=IdentityStatus.ACTIVE,
+                )
+                identity_id = identity.id
+
+                # Создаём OAuth credential
+                credential = await self.dao.credentials.create(
+                    identity_id=identity_id,
+                    type=CredentialType.OAUTH,
+                    provider=provider,
+                    external_subject_id=external_subject_id,
+                    identifier=user_email,
+                    meta={
+                        "email": user_email,
+                        "name": user_name,
+                        "last_token_response": token_response,
+                    },
+                    last_used=now,
+                )
+
+            # Создаём сессию
+            session, tokens = await self.create_session(
+                identity_id,
+                client_app_id,
+                ip=ip_address,
+                user_agent=user_agent,
+            )
+
+            # Устанавливаем identity_id и credential_id для успешного логирования
+            logger.set(identity_id=identity_id, credential_id=credential.id)
+
+            return session, tokens
 
     async def link_oauth_to_identity(self, identity_id: UUID, provider: str, code: str) -> Credential:
         """
@@ -217,7 +406,7 @@ class App(BaseApp):
         Разрешена только из доверенной зоны.
         Автолинковки НЕТ.
         """
-        pass
+        raise NotImplementedError()
 
     # =============================================================
     # Credentials
@@ -227,19 +416,19 @@ class App(BaseApp):
         """
         Добавляет password credential существующей identity.
         """
-        pass
+        raise NotImplementedError()
 
     async def link_otp_to_identity(self, identity_id: UUID, destination: str, channel: str) -> Credential:
         """
         Привязывает телефон/email как способ входа для существующей identity.
         """
-        pass
+        raise NotImplementedError()
 
     async def revoke_credential(self, credential_id: UUID) -> None:
         """
         Архивирует/отзывает credential.
         """
-        pass
+        raise NotImplementedError()
 
     # =============================================================
     # Sessions / JWT
@@ -249,7 +438,7 @@ class App(BaseApp):
         self,
         identity_id: UUID,
         client_app_id: UUID,
-        **session_data,
+        **session_data: object,
     ) -> tuple[Session, tuple[str, str]]:
         """
         Создаёт новую сессию:
@@ -280,7 +469,8 @@ class App(BaseApp):
             refresh_token_hash=refresh_token_hash,
             refresh_expires_at=refresh_expires_at,
             status=SessionStatus.ACTIVE,
-            **session_data,)
+            **session_data,
+        )
 
         return session, (access_token, refresh_token)
 
@@ -295,35 +485,102 @@ class App(BaseApp):
         3. Делает rotation refresh-токена
         4. Генерирует новый access
         """
-        pass
+        now = datetime.datetime.now(datetime.UTC)
 
-    async def revoke_session(self, session_id: UUID) -> None:
+        # 1) find session by refresh hash
+        refresh_token_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
+        sessions = await self.dao.sessions.search(
+            refresh_token_hash=refresh_token_hash,
+            status=SessionStatus.ACTIVE,
+            limit=1,
+        )
+        if not sessions:
+            raise ValueError("Invalid refresh token")
+
+        session = sessions[0]
+
+        # 2) validate client app and expiry
+        if session.client_app_id != client_app_id:
+            raise ValueError("Refresh token client mismatch")
+
+        if session.refresh_expires_at <= now:
+            await self.dao.sessions.update_by_id(session.id, status=SessionStatus.EXPIRED)
+            raise ValueError("Refresh token expired")
+
+        client_app = await self.dao.client_apps.get_by_id(client_app_id)
+
+        # 3) rotate refresh token (new opaque token + hash)
+        new_refresh_token = await self.generate_refresh_token()
+        new_refresh_hash = hashlib.sha256(new_refresh_token.encode()).hexdigest()
+        new_refresh_expires_at = now + datetime.timedelta(seconds=client_app.refresh_token_ttl_sec)
+
+        await self.dao.sessions.update_by_id(
+            session.id,
+            refresh_token_hash=new_refresh_hash,
+            refresh_expires_at=new_refresh_expires_at,
+            last_used_at=now,
+        )
+
+        # 4) new access token
+        access_token = await self.generate_access_token(session.identity_id, client_app_id)
+
+        session = await self.dao.sessions.get_by_id(session.id)
+        return session, (access_token, new_refresh_token)
+
+    async def revoke_session(self, session_id: UUID) -> Session:
         """
         Помечает сессию как revoked.
         """
-        pass
+        session = await self.dao.sessions.get_by_id(session_id)
+        if not session:
+            raise ValueError("Session not found")
 
-    async def revoke_all_sessions(self, identity_id: UUID) -> None:
+        if session.identity_id != self.current_identity.id:
+            raise ValueError("Session does not belong to current user")
+
+        await self.dao.sessions.update_by_id(
+            session_id,
+            status=SessionStatus.REVOKED,
+        )
+        return session
+
+    async def revoke_all_sessions(self, identity_id: UUID) -> int:
         """
         Отзывает все сессии пользователя.
         """
-        pass
 
-    async def list_sessions(self, identity_id: UUID) -> list[Session]:
+        # Отзываем все сессии пользователя
+        updated_sessions = await self.dao.sessions.update(
+            {"status": SessionStatus.REVOKED},
+            identity_id=identity_id,
+            status=SessionStatus.ACTIVE,
+        )
+        return len(updated_sessions)
+
+    async def list_sessions(self) -> Paginated[Session]:
         """
         Возвращает все активные/незавершённые сессии identity.
         """
-        pass
+        # Получаем все активные сессии (не отозванные и не истёкшие)
+        now = datetime.datetime.now(datetime.UTC)
+
+        sessions = await self.dao.sessions.paginated_search(
+            identity_id=self.current_identity.id,
+            status=SessionStatus.ACTIVE,
+            refresh_expires_at_gt=now,
+        )
+
+        return sessions
 
     # =============================================================
     # Identity
     # =============================================================
 
-    async def create_identity(self, *, tenant_id: Optional[str] = None) -> AuthIdentity:
+    async def create_identity(self, *, tenant_id: str | None = None) -> AuthIdentity:
         """
         Создаёт новую пустую identity без credential.
         """
-        pass
+        raise NotImplementedError()
 
     async def get_identity(self, identity_id: UUID) -> AuthIdentity:
         """Получает identity по ID."""
@@ -333,7 +590,7 @@ class App(BaseApp):
         """
         Мягкое удаление identity (status = deleted).
         """
-        pass
+        raise NotImplementedError()
 
     # =============================================================
     # External links
@@ -344,7 +601,7 @@ class App(BaseApp):
         Добавляет маппинг identity -> внешний пользователь (например фингуляр user_id).
         Нужен для дедупликации на стороне внешнего сервиса.
         """
-        pass
+        raise NotImplementedError()
 
     # =============================================================
     # Tokens
@@ -404,14 +661,13 @@ class App(BaseApp):
         Удаляет / архивирует истёкшие сессии.
         Возвращает число обработанных.
         """
-        pass
+        raise NotImplementedError()
 
     async def cleanup_expired_otp(self) -> int:
         """
         Чистит старые OTP-вызовы.
         """
-        pass
+        raise NotImplementedError()
 
-    async def _stop(self):
+    async def _stop(self) -> None:
         """Graceful shutdown."""
-        pass

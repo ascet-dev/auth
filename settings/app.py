@@ -10,7 +10,7 @@ class Cors(BaseSettings):
 
 
 class App(BaseSettings):
-    host: str = "0.0.0.0"  # noqa: S104
+    host: str = "localhost"  # noqa: S104
     port: int = 8002
     client_max_size: int = 1024 * 1024 * 50
     base_url: str = "/"

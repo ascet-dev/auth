@@ -6,7 +6,7 @@ from .default import Liveness, Readiness
 from .external import LinkExternalUser
 from .identity import CreateIdentity, DeleteIdentity, GetIdentity
 from .maintenance import CleanupOtp, CleanupSessions
-from .sessions import ListSessions, Logout, RefreshSession, RevokeAllSessions
+from .sessions import ListSessions, Logout, RefreshSession, RevokeAllSessions, RevokeSession
 
 __all__ = [
     "Readiness",
@@ -20,6 +20,7 @@ __all__ = [
     "RefreshSession",
     "Logout",
     "ListSessions",
+    "RevokeSession",
     "RevokeAllSessions",
     "CreateIdentity",
     "GetIdentity",
