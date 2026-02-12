@@ -40,11 +40,11 @@ wheels = [
 
 [[package]]
 name = "adc-appkit"
-version = "0.1.0"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a7/ac/3c624ccf70cea4c80a4f8420b86c3f5a9e1e661fa1498dd012ef4446483e/adc_appkit-0.1.0.tar.gz", hash = "sha256:bd7ccae63235455672c8d36f4ceaadd5509343d7f9e0fca9723881a617f583da", size = 56894, upload-time = "2025-11-12T18:49:24.82Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/57/1ac6435ba2f66265c7c8fadbaeb081a5a2f7ea208301ab133f591e2af9fd/adc_appkit-0.2.0.tar.gz", hash = "sha256:abc6db47c08e6ab0535c6aa056e41167ffd845fb48ee8ff7adbfe74c5512ab04", size = 47170, upload-time = "2026-02-12T23:16:07.484Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/65/7d/e1c9db6aec5f4e9e8b456ccdf571c0b1653bc83a09dab4071055f770cc28/adc_appkit-0.1.0-py3-none-any.whl", hash = "sha256:b76bad043bd227cc6e74750650b2eaf7b33d8b4e0e07513c7813d94c8d944a60", size = 17450, upload-time = "2025-11-12T18:49:23.147Z" },
+    { url = "https://files.pythonhosted.org/packages/58/39/6dae5a15e303d6a3daa10ba407f8a5846493d0587bd8f4dfba6b35b74e8e/adc_appkit-0.2.0-py3-none-any.whl", hash = "sha256:7f93b4c9c39d34fe58281a84717a1d58f6a842dc66993350349f3fc3a32657e5", size = 18002, upload-time = "2026-02-12T23:16:06.121Z" },
 ]
 
 [[package]]
@@ -1215,7 +1215,7 @@ dev = [
 requires-dist = [
     { name = "adc-aiopg" },
     { name = "adc-aios3" },
-    { name = "adc-appkit" },
+    { name = "adc-appkit", specifier = "==0.2.0" },
     { name = "adc-logger" },
     { name = "adc-webkit" },
     { name = "aiohttp", specifier = ">=3.9.0" },

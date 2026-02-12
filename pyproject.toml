@@ -15,7 +15,7 @@ requires-python = ">=3.11"
 dependencies = [
     # Core framework
     "adc-webkit",
-    "adc-appkit",
+    "adc-appkit==0.2.0",
     "adc-logger",
     "adc-aiopg",
     "adc-aios3",
