@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from adc_aiopg.types import Paginated
+from adc_webkit.errors import BadRequest, Unauthorized
 from adc_webkit.web import Ctx, JsonEndpoint, Response
 from adc_webkit.web.openapi import Doc
 
@@ -28,10 +29,17 @@ class RefreshSession(JsonEndpoint):
     async def execute(self, ctx: Ctx) -> dict:
         app: App = ctx.request.app.state.app
 
-        session, tokens = await app.refresh_session(
-            refresh_token=ctx.body.refresh_token,
-            client_app_id=ctx.body.client_app_id,
-        )
+        try:
+            session, tokens = await app.refresh_session(
+                refresh_token=ctx.body.refresh_token,
+                client_app_id=ctx.body.client_app_id,
+            )
+        except ValueError as e:
+            msg = str(e) or "Invalid refresh token"
+            if "invalid refresh token" in msg.lower() or "expired" in msg.lower():
+                raise Unauthorized(message=msg) from e
+            raise BadRequest(message=msg) from e
+
         return {
             "session": session.model_dump(exclude={"refresh_token_hash"}),
             "access_token": tokens[0],

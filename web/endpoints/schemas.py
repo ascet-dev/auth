@@ -3,6 +3,11 @@ from uuid import UUID
 from pydantic import BaseModel as PydanticBaseModel
 
 
+class RegisterPasswordRequest(PydanticBaseModel):
+    login: str
+    password: str
+
+
 class LoginByPasswordRequest(PydanticBaseModel):
     login: str
     password: str

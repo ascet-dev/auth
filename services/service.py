@@ -99,12 +99,35 @@ class App(BaseApp):
     # Пароли
     # =============================================================
 
-    async def register_password_identity(self, email: str, password: str) -> AuthIdentity:
+    async def register_password_identity(self, identifier: str, password: str) -> AuthIdentity:
         """
         Создаёт новую identity + password credential.
+        identifier — email, phone, username и т.п.
         НЕ привязывает к существующим identities.
         """
-        raise NotImplementedError()
+        existing = await self.dao.credentials.search(
+            identifier=identifier,
+            type=CredentialType.PASSWORD,
+            archived=False,
+            limit=1,
+        )
+        if existing:
+            raise ValueError("Credential with this identifier already exists")
+
+        identity = await self.dao.identities.create(
+            status=IdentityStatus.ACTIVE,
+        )
+
+        secret_hash = self.password_service.hash_password(password)
+        await self.dao.credentials.create(
+            identity_id=identity.id,
+            type=CredentialType.PASSWORD,
+            identifier=identifier,
+            secret_hash=secret_hash,
+            failed_attempts=0,
+        )
+
+        return identity
 
     async def login_by_password(
         self,
