@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings
 class Auth(BaseSettings):
     # JWT Configuration
     algorithms: list[str] = ["RS256"]
-    access_token_lifetime: timedelta = timedelta(minutes=15)
+    access_token_lifetime: timedelta = timedelta(minutes=1)
     refresh_token_lifetime: timedelta = timedelta(days=30)
 
     # TEST/DEVELOPMENT KEYS ONLY - DO NOT USE IN PRODUCTION!

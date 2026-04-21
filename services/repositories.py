@@ -12,7 +12,7 @@ from models.otp_challenge import AuthOtpChallenge
 from models.session import Session
 
 
-class DAO(PostgresAccessLayer, metadata=m.base.meta):
+class DAO(PostgresAccessLayer, metadata=m.base.meta):  # type: ignore[call-arg]
     identities = TableDescriptor[AuthIdentity](AuthIdentity, table_name="auth_identities")
     credentials = TableDescriptor[Credential](Credential, table_name="auth_credentials")
     sessions = TableDescriptor[Session](Session, table_name="auth_sessions")
