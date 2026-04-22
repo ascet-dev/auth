@@ -49,5 +49,10 @@ class LoginByOAuthRequest(PydanticBaseModel):
     client_app_id: UUID
 
 
+class LoginByTMARequest(PydanticBaseModel):
+    init_data: str
+    client_app_id: UUID
+
+
 class RevokedSessionsResponse(PydanticBaseModel):
     revoked_sessions: int

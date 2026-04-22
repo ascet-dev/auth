@@ -9,6 +9,10 @@ class Auth(BaseSettings):
     access_token_lifetime: timedelta = timedelta(minutes=1)
     refresh_token_lifetime: timedelta = timedelta(days=30)
 
+    # Telegram Mini App
+    telegram_bot_token: str | None = None
+    tma_auth_date_max_age: int = 300  # секунд, максимальный возраст auth_date
+
     # TEST/DEVELOPMENT KEYS ONLY - DO NOT USE IN PRODUCTION!
     # In production, load keys from environment variables
     public_key: str = """-----BEGIN PUBLIC KEY-----

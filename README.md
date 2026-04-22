@@ -1,259 +1,228 @@
-# Архитектура приложения на основе adc-appkit и adc-webkit
+# Auth Service
 
-## Обзор
+Универсальный сервис аутентификации. Управляет identity, credentials и sessions. Ничего не знает о бизнес-логике внешних систем.
 
-Проект построен на основе современных Python-фреймворков `adc-appkit` и `adc-webkit`, которые обеспечивают управление жизненным циклом компонентов, dependency injection и веб-API.
+## Что делает
 
-## Ключевые особенности
+- Регистрирует и аутентифицирует пользователей (password, OAuth 2.0, Telegram Mini App)
+- Выдаёт JWT access tokens (RS256, 1 мин) и refresh tokens (opaque, 30 дней, с ротацией)
+- Управляет сессиями (создание, refresh, отзыв, list)
+- Логирует все попытки входа (аудит)
+- Защищает от brute-force (lockout после 5 неудач на 30 мин)
+- Хранит только auth-данные: identity + credentials + sessions. Профили, бизнес-данные — в других сервисах.
 
-### 1. Управление жизненным циклом
-
-- **Автоматическая инициализация** компонентов при запуске приложения через `BaseApp`
-- **Корректное завершение** работы всех компонентов при остановке через `_stop()` метод
-- **Управление состояниями** компонентов через методы `is_alive()` и health checks
-
-### 2. Компонентная архитектура
-
-- **PG компонент** - подключение к PostgreSQL с пулом соединений
-- **S3 компонент** - работа с объектным хранилищем (MinIO)
-- **Web компонент** - REST API с автоматической документацией OpenAPI
-- **DAO компонент** - слой доступа к данным через SQLAlchemy
-
-### 3. Управление зависимостями
-
-- **Dependency injection** через декоратор `@component`
-- **Автоматическое разрешение зависимостей** между компонентами
-- **Конфигурация через Pydantic** с поддержкой переменных окружения
-
-### 4. Мониторинг и отладка
-
-- **Health checks** через endpoints `/readiness` и `/liveness`
-- **Проверка состояния** всех компонентов (PG, S3, HTTP)
-- **Логирование** через структурированные логи с Sentry интеграцией
-
-## Структура файлов
+## Модель данных
 
 ```
-back_template/
-├── services/
-│   ├── __init__.py          # Экспорт App класса
-│   ├── service.py           # Основной App класс с компонентами
-│   ├── repositories.py       # DAO слой для работы с БД
-│   └── schemas.py           # Pydantic схемы
-├── web/
-│   ├── __init__.py          # Веб модуль
-│   ├── app.py              # WebApp конфигурация
-│   ├── endpoints.py        # REST API endpoints
-│   └── auth.py             # Аутентификация
-├── settings/
-│   ├── __init__.py          # Экспорт cfg
-│   ├── settings.py          # Основная конфигурация
-│   ├── app.py              # Настройки приложения
-│   ├── postgres.py         # Настройки PostgreSQL
-│   ├── s3.py               # Настройки S3/MinIO
-│   ├── auth.py             # Настройки JWT
-│   └── logs.py             # Настройки логирования
-├── models/
-│   ├── __init__.py          # Экспорт моделей
-│   └── base.py              # Базовые модели SQLAlchemy
-├── manage.py               # CLI для управления приложением
-├── docker-compose.yml      # Docker окружение
-└── pyproject.toml          # Зависимости проекта
+auth_identities              — пользователь (абстрактный аккаунт)
+  └── auth_credentials       — способы входа (1 identity → N credentials)
+        type: PASSWORD         email/username + Argon2id hash
+        type: OAUTH            Google, VK, etc. (authorization code flow)
+        type: TMA              Telegram Mini App (initData HMAC verify)
+        type: OTP_*            SMS/email/WhatsApp/Telegram (частично)
+        type: API_KEY          (зарезервирован)
+  └── auth_sessions          — активные сессии (refresh token hash)
+
+auth_client_apps             — приложения-клиенты (TTL, redirect URI, scopes)
+auth_oauth_providers         — конфигурация OAuth-провайдеров
+auth_otp_challenges          — OTP-коды (временные)
+auth_logins                  — аудит всех попыток входа
+auth_identity_external_links — маппинг identity → внешние системы
 ```
 
-## Основные классы
+Все таблицы в схеме `auth`. Soft delete через поле `archived`. UUID v4 для PK.
 
-### 1. App (BaseApp)
+## API
 
-Основной класс приложения, наследующий от `BaseApp` из `adc-appkit`:
+### Аутентификация
 
-```python
-class App(BaseApp):
-    pg = component(PG, config_key="pg")
+| Метод | Эндпоинт | Описание | Статус |
+|-------|----------|----------|--------|
+| POST | `/auth/register/password` | Регистрация (email/username + пароль) | done |
+| POST | `/auth/login/password` | Вход по паролю | done |
+| POST | `/auth/oauth/start` | Начать OAuth flow (получить redirect URL) | done |
+| POST | `/auth/oauth/login` | Завершить OAuth flow (обменять code на сессию) | done |
+| POST | `/auth/tma/login` | Вход через Telegram Mini App initData | done |
+| POST | `/auth/otp/send` | Отправить OTP код | todo |
+| POST | `/auth/otp/login` | Вход по OTP коду | todo |
 
-    @property
-    def dao(self) -> DAO:
-        if not hasattr(self, "_dao"):
-            if not self.pg.is_alive():
-                raise RuntimeError("PG is not alive")
-            self._dao = DAO(self.pg)
-        return self._dao
+### Сессии
 
-    async def _stop(self):
-        pass
+| Метод | Эндпоинт | Описание | Статус |
+|-------|----------|----------|--------|
+| POST | `/auth/session/refresh` | Ротация refresh token | done |
+| POST | `/auth/session/logout` | Отозвать сессию | done |
+| GET | `/auth/sessions` | Список активных сессий | done |
+| DELETE | `/auth/sessions/{id}` | Отозвать конкретную сессию | done |
+| POST | `/auth/sessions/revoke-all` | Отозвать все сессии | done |
 
-    async def business_logic(self):
-        return await self.dao.pm.fetch("SELECT 1")
+### Identity и credentials
+
+| Метод | Эндпоинт | Описание | Статус |
+|-------|----------|----------|--------|
+| POST | `/auth/identity` | Создать identity | todo |
+| GET | `/auth/identity` | Получить identity | todo |
+| DELETE | `/auth/identity` | Удалить identity | todo |
+| POST | `/auth/credentials/*/link` | Привязать credential | todo |
+| POST | `/auth/credentials/revoke` | Отозвать credential | todo |
+| POST | `/auth/external/link` | Маппинг на внешнюю систему | todo |
+
+### Health
+
+| Метод | Эндпоинт | Описание |
+|-------|----------|----------|
+| GET | `/readiness` | Готовность (PG, S3) |
+| GET | `/liveness` | Жив ли сервер |
+
+## Флоу аутентификации
+
+### Password
+
+```
+Client → POST /auth/register/password {login, password}
+       ← {identity_id, status}
+
+Client → POST /auth/login/password {login, password, client_app_id}
+       ← {session, access_token, refresh_token}
 ```
 
-### 2. WebApp (Web)
+### OAuth 2.0
 
-Веб-приложение на основе `adc-webkit`:
+```
+Client → POST /auth/oauth/start {provider, redirect_uri}
+       ← {redirect_url}
 
-```python
-class WebApp(Web):
-    cors = cfg.app.cors.model_dump()
-    routes = [
-        Route("GET", "/readiness", Readiness),
-        Route("GET", "/liveness", Liveness),
-    ]
+Client → (redirect to provider → user authorizes → redirect back with code)
 
-web = WebApp.create(bindings={'app': app})
+Client → POST /auth/oauth/login {provider, code, redirect_uri, client_app_id}
+       ← {session, access_token, refresh_token}
 ```
 
-### 3. DAO (PostgresAccessLayer)
+### Telegram Mini App (TMA)
 
-Слой доступа к данным:
-
-```python
-class DAO(PostgresAccessLayer, metadata=m.base.meta):
-    pass
+```
+TMA    → Telegram передаёт initData (подписан HMAC-SHA256 ботовым токеном)
+Client → POST /auth/tma/login {init_data, client_app_id}
+         1. Парсит initData (query string)
+         2. Верифицирует HMAC-SHA256 подпись
+         3. Проверяет свежесть auth_date (дефолт 5 мин)
+         4. Ищет credential (type=TMA, external_subject_id=telegram_id)
+         5. Если нет → создаёт identity + credential
+         6. Создаёт сессию
+       ← {session, access_token, refresh_token}
 ```
 
-### 4. Endpoints
+### Refresh
 
-REST API endpoints с автоматической документацией:
-
-```python
-class Readiness(JsonEndpoint):
-    doc = Doc(tags=["default"], summary="check if the server is ready")
-    response = Response(ReadinessResponse)
-
-    async def execute(self, _) -> dict:
-        components = list(ReadinessResponse.__annotations__)
-        statuses = await asyncio.gather(*(getattr(self.web.state.app, com).is_alive() for com in components))
-        return dict(zip(components, statuses, strict=True))
+```
+Client → POST /auth/session/refresh {refresh_token, client_app_id}
+         1. Находит сессию по hash(refresh_token)
+         2. Проверяет expiry
+         3. Ротация: новый refresh_token, новый access_token
+       ← {session, access_token, refresh_token}
 ```
 
-## Примеры использования
+## JWT
 
-### Запуск приложения
+- Алгоритм: **RS256** (RSA + SHA-256)
+- Access token: 1 минута, JWT, подписан private key
+- Refresh token: 30 дней (настраивается per client_app), opaque token, в БД хранится только SHA-256 hash
+- Payload: `{sub: identity_id, iat, exp, type: "access", tenant?}`
+
+Внешние сервисы валидируют access token публичным ключом без обращения к auth-сервису.
+
+## Запуск
+
+### Локально
 
 ```bash
-# Запуск веб-сервера
-python manage.py start-web
+# 1. Зависимости
+uv sync
 
-# Применение SQL скрипта
-python manage.py apply-sql data.sql
+# 2. Инфраструктура (PostgreSQL + MinIO)
+docker-compose up -d postgres minio minio_init
+
+# 3. Миграции
+make db-upgrade FORCE=true
+
+# 4. Тестовые данные (admin user + test client_app)
+make data-migration FORCE=true
+
+# 5. Запуск
+make run
+# → http://localhost:8002
 ```
 
-### Работа с компонентами
+### Docker Compose (всё вместе)
 
-```python
-# Получение DAO для работы с БД
-dao = app.dao
-result = await dao.pm.fetch("SELECT * FROM users")
-
-# Проверка состояния компонентов
-pg_alive = app.pg.is_alive()
+```bash
+docker-compose up -d
+# → http://localhost:8003
 ```
 
-### Создание новых endpoints
+### Полная инициализация с нуля
 
-```python
-class UserEndpoint(JsonEndpoint):
-    doc = Doc(tags=["users"], summary="Get user by ID")
-    response = Response(UserResponse)
-
-    async def execute(self, user_id: str) -> dict:
-        dao = self.web.state.app.dao
-        user = await dao.pm.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
-        return {"user": user}
+```bash
+make init
+# Установит deps, создаст .env, запустит инфру, применит миграции
 ```
 
-### Конфигурация через переменные окружения
+## Конфигурация
+
+Через переменные окружения (pydantic-settings, разделитель `__`):
 
 ```bash
 # PostgreSQL
-PG__CONNECTION__DSN=postgresql://user:pass@localhost:5432/db
-PG__CONNECTION__MAX_SIZE=10
+PG__CONNECTION__DSN=postgresql://postgres:postgres@localhost:5432/fitness
 
-# S3/MinIO
-S3__CONNECTION__URL=http://localhost:9000
-S3__CONNECTION__ACCESS_KEY=minioadmin
-S3__CONNECTION__SECRET_KEY=minioadmin
+# JWT (обязательно заменить в продакшене!)
+AUTH__ALGORITHMS=["RS256"]
+AUTH__ACCESS_TOKEN_LIFETIME=60        # секунды
+AUTH__REFRESH_TOKEN_LIFETIME=2592000  # 30 дней
+AUTH__PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n..."
+AUTH__PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n..."
 
-# Приложение
+# Telegram Mini App
+AUTH__TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+AUTH__TMA_AUTH_DATE_MAX_AGE=300       # секунды, дефолт 5 мин
+
+# Сервер
 APP__HOST=0.0.0.0
-APP__PORT=8001
+APP__PORT=8002
+
+# Окружение
+ENV=LOCAL  # LOCAL | COMPOSE | PRODUCTION
 ```
 
-## Преимущества архитектуры
+В `LOCAL` окружении читается файл `.env`. В `COMPOSE` / `PRODUCTION` — только env-переменные.
 
-1. **Готовые компоненты** - использование проверенных библиотек `adc-appkit` и `adc-webkit`
-2. **Автоматическое управление жизненным циклом** - компоненты инициализируются и завершаются автоматически
-3. **Dependency injection** - простое внедрение зависимостей через декораторы
-4. **Автоматическая документация** - OpenAPI документация генерируется автоматически
-5. **Health checks** - встроенные проверки состояния всех компонентов
-6. **Конфигурация через Pydantic** - типизированная конфигурация с валидацией
-7. **Docker-ready** - готовое окружение для разработки и продакшена
-8. **Структурированное логирование** - интеграция с Sentry для мониторинга
-9. **Асинхронность** - полная поддержка async/await
-10. **Типизация** - полная поддержка type hints с mypy
+## Тестовые данные
 
-## Тестирование
+`data/init_data.sql` создаёт:
+- `client_app` с ключом `test-app` (PUBLIC, access 15 мин, refresh 30 дней)
+- `admin` пользователь (password: `admin`)
 
-Проект настроен для комплексного тестирования:
-
-- **pytest** - основной фреймворк для тестирования
-- **pytest-asyncio** - поддержка асинхронных тестов
-- **pytest-cov** - покрытие кода тестами
-- **pytest-mock** - мокирование компонентов
-- **pytest-xdist** - параллельное выполнение тестов
-
-### Запуск тестов
+## Команды
 
 ```bash
-# Все тесты
-pytest
-
-# С покрытием
-pytest --cov=services --cov=web --cov=settings
-
-# Параллельно
-pytest -n auto
-
-# Только unit тесты
-pytest -m unit
+make run              # запуск сервера
+make test             # тесты
+make check            # lint + format + mypy + bandit
+make init             # полная инициализация
+make docker-run       # docker-compose up
+make db-migrate message="..."  # новая миграция Alembic
+make db-upgrade       # применить миграции
+make data-migration   # применить data/init_data.sql
+make clean            # очистить временные файлы
+make kill-server      # убить сервер на порту
 ```
 
-## Разработка
+## Стек
 
-### Инструменты разработки
-
-- **black** - форматирование кода
-- **isort** - сортировка импортов
-- **ruff** - линтер и форматтер
-- **mypy** - проверка типов
-- **pre-commit** - хуки для git
-- **bandit** - проверка безопасности
-
-### Docker окружение
-
-```bash
-# Запуск всех сервисов
-docker-compose up -d
-
-# Только база данных
-docker-compose up postgres -d
-
-# Миграции
-docker-compose up postgres_migrations
-
-# Применение данных
-docker-compose up data_migrations
-```
-
-## Заключение
-
-Данная архитектура предоставляет:
-
-- **Современный стек** на основе `adc-appkit` и `adc-webkit`
-- **Готовое решение** для быстрого старта разработки
-- **Автоматическое управление** жизненным циклом компонентов
-- **Встроенные инструменты** для разработки и тестирования
-- **Docker-окружение** для локальной разработки
-- **Полную типизацию** и проверку качества кода
-- **Готовую документацию** API через OpenAPI
-
-Архитектура готова к использованию в реальных проектах и может быть легко расширена под конкретные требования бизнеса.
+- **Python** 3.12, **uv**
+- **adc-webkit** (async web, поверх aiohttp), **adc-appkit** (DI, lifecycle)
+- **adc-aiopg** (async PostgreSQL), **SQLModel** (ORM)
+- **Alembic** (миграции), **Pydantic Settings** (конфигурация)
+- **python-jose** (JWT RS256), **passlib[argon2]** (пароли)
+- **PostgreSQL** 15, **MinIO** (S3)
+- **Docker** + **Docker Compose**

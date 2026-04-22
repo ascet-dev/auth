@@ -1,152 +1,184 @@
 # Auth Service
 
-## Stack
+Универсальный сервис аутентификации. Управляет identity, credentials, sessions. Ничего не знает о бизнес-логике.
 
-- **Python** 3.12 (pyproject.toml requires >=3.11, Docker image uses 3.12-slim-bookworm)
-- **adc-webkit** — async web framework (поверх aiohttp)
-- **adc-appkit** — компонентная система и DI
-- **adc-aiopg** — async PostgreSQL клиент
-- **adc-aios3** — async S3 клиент
-- **adc-logger** — структурированное логирование
-- **SQLModel** — ORM (SQLAlchemy + Pydantic)
-- **Alembic** — миграции базы данных
-- **Pydantic Settings** — конфигурация через env-переменные
-- **python-jose** — JWT (RS256)
-- **passlib[argon2]** — хеширование паролей (Argon2id)
-- **click** — CLI (manage.py)
-- **uvloop** — event loop
-- **sentry-sdk** — мониторинг ошибок
-- **uv** — пакетный менеджер (замена pip/poetry)
-
-## Dev-инструменты
-
-- **ruff** — линтер и форматтер (line-length: 120)
-- **black** — форматирование (line-length: 120, target: py311)
-- **isort** — сортировка импортов (profile: black)
-- **mypy** — строгая типизация (disallow_untyped_defs: true)
-- **bandit** — security-сканер
-- **pre-commit** — git-хуки
-- **pytest** + pytest-asyncio, pytest-cov, pytest-xdist, pytest-mock
-
-## Структура проекта
+## Структура
 
 ```
-├── models/          # SQLModel-модели (ORM + Pydantic)
-│   ├── base.py      # BaseModel: id (UUID), created, updated, archived
-│   ├── enums.py     # Enum-ы статусов и типов
-│   └── *.py         # Таблицы: identity, credential, session, client_app, ...
-├── services/        # Бизнес-логика
-│   ├── service.py   # Основной App-класс со всей логикой
-│   ├── repositories.py  # DAO (PostgresAccessLayer + TableDescriptor)
-│   ├── password_service.py  # Argon2 хеширование
-│   ├── schemas.py
-│   └── components/  # REQUEST-scoped компоненты (CurrentIdentity)
-├── web/             # HTTP-слой
-│   ├── app.py       # WebApp: CORS, маршруты (Route)
-│   ├── auth.py      # JWT-конфигурация (RS256)
-│   └── endpoints/   # Эндпоинты (JsonEndpoint)
-│       ├── schemas.py  # Pydantic request/response схемы
-│       └── *.py     # auth_password, auth_otp, auth_oauth, sessions, ...
-├── settings/        # Конфигурация (pydantic-settings)
-│   ├── settings.py  # CFG: объединяет все подмодули
-│   ├── app.py       # host, port, CORS
-│   ├── postgres.py  # PG-подключение
-│   ├── auth.py      # JWT ключи и TTL
-│   ├── s3.py, logs.py, sentry.py, telemetry.py, doc.py
-│   └── env.py       # ENV=LOCAL|COMPOSE|PRODUCTION
-├── alembic/         # Миграции
-├── data/            # SQL-фикстуры (init_data.sql)
-├── manage.py        # CLI: start-web, apply-sql, seed-data
-├── Makefile         # make run, make test, make check, make init, ...
-├── Dockerfile       # Multi-stage: base → uv-setup → development/production
-├── docker-compose.yml  # postgres, minio, migrations, backend
-└── pyproject.toml   # Зависимости + конфиги ruff/mypy/pytest/black/isort/bandit
+├── models/              # SQLModel-модели (схема auth в PostgreSQL)
+│   ├── base.py          # BaseModel: id (UUID v4), created, updated, archived
+│   ├── enums.py         # IdentityStatus, CredentialType, SessionStatus, OtpChannel, AuthClientType
+│   ├── identity.py      # AuthIdentity (tenant_id, status)
+│   ├── credential.py    # Credential (identity_id, type, identifier, provider, secret_hash, external_subject_id, meta)
+│   ├── session.py       # Session (identity_id, client_app_id, refresh_token_hash, status)
+│   ├── client_app.py    # ClientApp (key, type, TTLs, allowed URIs/scopes)
+│   ├── oauth_provider.py # AuthOauthProvider (name, client_id/secret, URLs, enabled)
+│   ├── otp_challenge.py # AuthOtpChallenge (channel, destination, code_hash, expires_at)
+│   ├── logins.py        # Login (method, identifier, success, ip, user_agent) — аудит
+│   └── identity_external_link.py  # Маппинг identity → внешняя система
+├── services/
+│   ├── service.py       # App (BaseApp) — ВСЯ бизнес-логика: login_by_password, login_by_oauth, login_by_tma, sessions, JWT
+│   ├── repositories.py  # DAO (PostgresAccessLayer + 8 TableDescriptor)
+│   ├── password_service.py  # Argon2id хеширование
+│   ├── login_attempt_logger.py  # Async context manager для аудита логинов
+│   └── components/
+│       └── current_identity.py  # REQUEST-scoped: загружает identity из JWT sub, проверяет ACTIVE
+├── web/
+│   ├── app.py           # WebApp + Route-ы + создание app
+│   ├── auth.py          # JWT объект (RS256, public_key, payload_model=Client)
+│   └── endpoints/
+│       ├── schemas.py   # Все Pydantic request/response модели
+│       ├── auth_password.py  # RegisterPassword, LoginByPassword
+│       ├── auth_oauth.py     # StartOauthFlow, LoginByOauth
+│       ├── auth_tma.py       # LoginByTMA (Telegram Mini App)
+│       ├── auth_otp.py       # SendOtp, LoginByOtp (TODO)
+│       ├── sessions.py       # RefreshSession, Logout, ListSessions, RevokeSession, RevokeAllSessions
+│       ├── credentials.py    # LinkPassword, LinkOtp, LinkOauth, RevokeCredential (TODO)
+│       ├── identity.py       # CreateIdentity, GetIdentity, DeleteIdentity (TODO)
+│       ├── external.py       # LinkExternalUser (TODO)
+│       ├── maintenance.py    # CleanupSessions, CleanupOtp (TODO)
+│       └── default.py        # Liveness, Readiness
+├── settings/
+│   ├── settings.py      # CFG — корневой конфиг, объединяет подмодули
+│   ├── auth.py          # JWT (RS256, TTLs, ключи), Telegram (bot_token, auth_date_max_age)
+│   ├── postgres.py      # DSN, pool, schema_name="auth"
+│   ├── app.py           # host, port, CORS
+│   └── env.py, doc.py, logs.py, s3.py, sentry.py, telemetry.py
+├── alembic/             # Миграции (env.py использует DAO.meta)
+│   └── versions/        # Файлы миграций
+├── data/init_data.sql   # Тестовые данные: test-app client + admin user
+├── manage.py            # CLI: start-web, apply-sql
+├── Makefile             # make run/test/check/init/db-upgrade/...
+└── docker-compose.yml   # postgres, minio, migrations, backend
 ```
 
-## Архитектурные паттерны
+## Ключевые паттерны
 
-### Компонентная система (adc-appkit)
+### Как устроен App (services/service.py)
+
+Единый класс `App(BaseApp)` содержит ВСЮ бизнес-логику. Компоненты подключаются через DI:
+
 ```python
 class App(BaseApp):
     pg = component(PG, config_key="pg")
     dao: DAO = component(create_component(DAO), dependencies={"pool": "pg"})
     password_service = PasswordService()
+    current_identity = component(CurrentIdentity, strategy=ComponentStrategy.REQUEST)
 ```
 
-### DAO (Data Access Layer)
-```python
-class DAO(PostgresAccessLayer, metadata=m.base.meta):
-    identities = TableDescriptor[AuthIdentity](...)
-    credentials = TableDescriptor[Credential](...)
-    sessions = TableDescriptor[Session](...)
-```
-Операции: `dao.table.create(...)`, `dao.table.search(...)`, `dao.table.update_by_id(...)`, `dao.table.delete_by_id(...)`
+### Как писать эндпоинт
 
-### Эндпоинты
 ```python
 class MyEndpoint(JsonEndpoint):
-    doc = Doc(tags=[...], summary="...")
-    auth = jwt           # опционально — защищенный эндпоинт
-    body = MyRequest     # Pydantic-модель запроса
+    doc = Doc(tags=["my_tag"], summary="Что делает")
+    auth = jwt                    # если нужна авторизация (иначе убрать)
+    body = MyRequest              # Pydantic-модель из schemas.py
     response = Response(MyResponse)
 
     async def execute(self, ctx: Ctx) -> dict:
         app: App = ctx.request.app.state.app
-        ...
+        # бизнес-логика через app.method(...)
+        return {"key": "value"}
 ```
 
-### Request Scope для авторизации
+Регистрация: добавить в `web/app.py` → `Route("POST", "/path", MyEndpoint)` и в `web/endpoints/__init__.py`.
+
+### Как работает аутентификация в эндпоинтах
+
+- `auth = jwt` на эндпоинте → JWT валидируется, `sub` (identity_id) доступен
+- Для доступа к текущей identity: `request_scope` → `app.current_identity`
+- Для незащищённых эндпоинтов (login, register) — `auth` не указывается
+
+### Как работает DAO
+
 ```python
-async with app.request_scope({"current_identity": {"sub": identity_id, "dao": app.dao}}):
-    identity = await app.current_identity.get()
+# Создание
+entity = await app.dao.credentials.create(type=CredentialType.TMA, ...)
+# Поиск (kwargs — фильтры)
+results = await app.dao.credentials.search(provider="google", archived=False, limit=1)
+# Обновление
+await app.dao.credentials.update_by_id(entity.id, last_used=now)
+# По ID
+entity = await app.dao.sessions.get_by_id(session_id)
+# Массовое обновление
+updated = await app.dao.sessions.update({"status": SessionStatus.REVOKED}, identity_id=id)
 ```
 
-### Context Manager для side effects
+### Как работают enum-ы в БД
+
+Enum-ы хранятся как PostgreSQL ENUM types (через `sqla_enum` из adc_aiopg):
+
 ```python
-async with app.log_login_attempt(method=..., identifier=...) as logger:
+# В модели:
+type: CredentialType = Field(default=CredentialType.PASSWORD, sa_column=sqla_enum(CredentialType).sa_column)
+```
+
+Имя PG-типа: CamelCase → snake_case (CredentialType → `auth.credential_type`).
+Добавление нового значения — Alembic-миграция: `ALTER TYPE auth.credential_type ADD VALUE 'NEW_VALUE'`.
+**Удалять значения из enum нельзя** (PostgreSQL ограничение).
+
+### Аудит логинов
+
+Все login-методы оборачиваются в `log_login_attempt`:
+
+```python
+async with self.log_login_attempt(method="tma", identifier=None, ip_address=ip, user_agent=ua) as logger:
     # логика аутентификации
-    logger.set(identity_id=..., credential_id=..., success=True)
+    logger.set(identity_id=identity_id, credential_id=credential.id)
+    return session, tokens
+    # если вылетит exception — запишется success=False
 ```
 
-## База данных
+### JWT токены
 
-PostgreSQL 15, схема `auth`. Таблицы:
-- `auth_identities` — пользователи (tenant_id, status)
-- `auth_credentials` — способы входа (password/OTP/OAuth)
-- `auth_sessions` — сессии с refresh token hash
-- `auth_client_apps` — OAuth-клиенты
-- `auth_oauth_providers` — провайдеры OAuth
-- `auth_otp_challenges` — OTP-коды
-- `auth_identity_external_links` — связи с внешними системами
-- `auth_logins` — аудит попыток входа
+- Access token: RS256 JWT, 1 мин, payload: `{sub, iat, exp, type, tenant?}`
+- Refresh token: opaque (secrets.token_urlsafe(64)), в БД хранится SHA-256 hash
+- Ротация: при каждом refresh выдаётся новый refresh token, старый инвалидируется
 
-Базовая модель: `id` (UUID v4), `created`, `updated`, `archived` (soft delete).
+## Реализованные auth-методы
 
-## Аутентификация
+| Метод | Тип credential | Как ищет identity | Файл |
+|-------|---------------|-------------------|------|
+| Password | `PASSWORD` | `search(identifier=login, type=PASSWORD)` | service.py:login_by_password |
+| OAuth 2.0 | `OAUTH` | `search(provider=provider, external_subject_id=sub)` | service.py:login_by_oauth |
+| TMA | `TMA` | `search(type=TMA, external_subject_id=telegram_id)` | service.py:login_by_tma |
 
-- **Password**: Argon2id, lockout после 5 неудач на 30 минут
-- **OAuth 2.0**: authorization code flow, JWKS/userinfo валидация
-- **OTP**: SMS/email/WhatsApp/Telegram (частично реализовано)
-- **JWT**: RS256, access token 1 мин, refresh token 30 дней, ротация при refresh
+Паттерн одинаковый: найти credential → получить identity_id → создать сессию → вернуть JWT.
 
-## Команды
+## Конфигурация
+
+Pydantic-settings, разделитель `__`, prefix отсутствует:
 
 ```bash
-make run              # запуск сервера
-make test             # тесты
-make check            # lint + format + mypy + bandit
-make init             # полная инициализация (deps + hooks + infra + migrations)
-make docker-run       # docker-compose up
-make db-migrate message="..."  # новая миграция
-make db-upgrade       # применить миграции
+PG__CONNECTION__DSN=postgresql://postgres:postgres@localhost:5432/fitness
+AUTH__TELEGRAM_BOT_TOKEN=123456:ABC-DEF...  # для TMA
+AUTH__TMA_AUTH_DATE_MAX_AGE=300             # максимальный возраст initData в секундах
+AUTH__PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n..."
+AUTH__PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n..."
 ```
+
+Тестовые RSA-ключи зашиты в `settings/auth.py` для LOCAL-окружения. В продакшене — через env.
 
 ## Соглашения
 
 - Длина строки: 120 символов
+- Линтер/форматтер: **ruff** (основной), **black** (120, py311)
+- Типизация: **mypy** strict для основного кода
 - Классы: PascalCase, функции: snake_case, константы: UPPER_CASE
-- Комментарии и описания на русском языке допустимы
-- Strict mypy для основного кода, ослабленный для моделей/тестов
-- Soft delete через поле `archived` (не физическое удаление)
-- UUID v4 для всех первичных ключей
+- Комментарии на русском допустимы
+- Soft delete через `archived` (не физическое удаление)
+- UUID v4 для всех PK (server_default в БД)
 - Все эндпоинты регистрируются в `web/app.py` как `Route(...)`
+- Enum-значения только добавляются, никогда не удаляются
+- Автолинковка credentials запрещена (credential привязывается к identity только явно)
+
+## Команды
+
+```bash
+make run              # сервер на http://localhost:8002
+make test             # pytest
+make check            # ruff + mypy + bandit
+make init             # полная инициализация с нуля
+make db-upgrade       # применить Alembic-миграции
+make db-migrate message="..."  # создать новую миграцию
+```

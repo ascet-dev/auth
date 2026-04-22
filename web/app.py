@@ -28,6 +28,8 @@ class WebApp(Web):
         # OAuth
         Route("POST", "/auth/oauth/start", e.StartOauthFlow),
         Route("POST", "/auth/oauth/login", e.LoginByOauth),
+        # TMA (Telegram Mini App)
+        Route("POST", "/auth/tma/login", e.LoginByTMA),
         # sessions
         Route("POST", "/auth/session/refresh", e.RefreshSession),
         Route("POST", "/auth/session/logout", e.Logout),

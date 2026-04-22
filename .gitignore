@@ -146,9 +146,6 @@ logs/
 *.sqlite3
 /data.sql
 
-# Alembic (migration versions)
-alembic/versions/*.py
-!alembic/versions/__init__.py
 
 # Secrets handling
 !*.env.example

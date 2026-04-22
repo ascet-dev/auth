@@ -19,6 +19,7 @@ class CredentialType(str, Enum):
     OTP_EMAIL = "OTP_EMAIL"
     OAUTH = "OAUTH"
     API_KEY = "API_KEY"
+    TMA = "TMA"
 
 
 class SessionStatus(str, Enum):

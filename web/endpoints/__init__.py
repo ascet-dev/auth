@@ -1,6 +1,7 @@
 from .auth_oauth import LoginByOauth, StartOauthFlow
 from .auth_otp import LoginByOtp, SendOtp
 from .auth_password import LoginByPassword, RegisterPassword
+from .auth_tma import LoginByTMA
 from .credentials import LinkOauth, LinkOtp, LinkPassword, RevokeCredential
 from .default import Liveness, Readiness
 from .external import LinkExternalUser
@@ -17,6 +18,7 @@ __all__ = [
     "LoginByOtp",
     "StartOauthFlow",
     "LoginByOauth",
+    "LoginByTMA",
     "RefreshSession",
     "Logout",
     "ListSessions",

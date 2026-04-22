@@ -18,7 +18,7 @@ class Session(BaseModel):
     refresh_token_hash: str = Field(description="Хэш refresh-токена (сам токен хранится у клиента)")
     refresh_expires_at: datetime
 
-    status: SessionStatus = sqla_enum(SessionStatus, default=SessionStatus.ACTIVE)
+    status: SessionStatus = Field(default=SessionStatus.ACTIVE, sa_column=sqla_enum(SessionStatus).sa_column)
 
     last_used_at: datetime | None = Field(default=None)
 
