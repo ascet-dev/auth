@@ -5,6 +5,7 @@ from typing import Any
 from adc_aiopg.types import Base
 from adc_webkit.web import JsonEndpoint, Response
 from adc_webkit.web.openapi import Doc
+from aiohttp.web import HTTPServiceUnavailable
 
 logger = getLogger(__name__)
 
@@ -70,9 +71,11 @@ class Readiness(JsonEndpoint):
     response = Response(ReadinessResponse)
 
     async def execute(self, _: object) -> dict[str, bool]:
-        """Собирает все компоненты и проверяет их готовность. PG, S3, HTTP, вызывает методы is_alive"""
         components = list(ReadinessResponse.__annotations__)
         statuses = await asyncio.gather(
             *(_check_component_ready(getattr(self.web.state.app, com)) for com in components),
         )
-        return dict(zip(components, statuses, strict=True))
+        result = dict(zip(components, statuses, strict=True))
+        if not all(statuses):
+            raise HTTPServiceUnavailable(text=str(result))
+        return result

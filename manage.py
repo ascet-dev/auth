@@ -17,16 +17,9 @@ logger = getLogger(__name__)
 
 @click.group()
 def cli() -> None:
-    """Init event loop, logging config etc."""
-    if cfg.logs.sentry.enabled:
-        sentry_sdk.init(
-            dsn=cfg.logs.sentry.dsn,
-            integrations=cfg.logs.sentry.integrations,
-            environment=cfg.env,
-        )
-
+    """Auth service CLI."""
     if platform.system() != "Windows":
-        import uvloop  # will fail on Windows
+        import uvloop
 
         uvloop.install()
 
@@ -34,6 +27,12 @@ def cli() -> None:
 @cli.command(short_help="start web")
 def start_web() -> None:
     """Start REST API application."""
+    if cfg.logs.sentry.enabled:
+        sentry_sdk.init(
+            dsn=cfg.logs.sentry.dsn,
+            integrations=cfg.logs.sentry.integrations,
+            environment=cfg.env,
+        )
     try:
         asyncio.run(web.start(host=cfg.app.host, port=cfg.app.port, logs_config=cfg.logs.config.get_logging_config()))
     except KeyboardInterrupt:

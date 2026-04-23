@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm as base
+FROM python:3.12-slim-bookworm AS base
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     curl \
@@ -13,13 +13,13 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /tmp/* /var/tmp/*
 
-FROM base as uv-setup
+FROM base AS uv-setup
 
 RUN curl -Ls https://astral.sh/uv/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
 ENV UV_SYSTEM_PYTHON=true
 
-FROM uv-setup as development
+FROM uv-setup AS development
 
 WORKDIR /app
 
@@ -35,8 +35,9 @@ RUN chown -R appuser:appuser /app
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
+USER appuser
 
-FROM uv-setup as production
+FROM uv-setup AS production
 
 WORKDIR /app
 
@@ -58,5 +59,6 @@ RUN find /app -name "*.pyc" -delete && \
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
+USER appuser
 
 FROM production

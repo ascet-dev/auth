@@ -9,14 +9,11 @@ help: ## Show this help message
 #                                Installation                                 #
 #=============================================================================#
 
-install: ## Install runtime dependencies
-	uv pip install -e .
+install: ## Install dependencies
+	uv sync
 
-install-dev: ## Install development dependencies
-	uv pip install -e ".[dev]"
-
-install-test: ## Install test dependencies
-	uv pip install -e ".[test]"
+install-dev: ## Install with dev dependencies
+	uv sync --all-extras
 
 uv-sync: ## Sync dependencies lock file
 	uv sync
