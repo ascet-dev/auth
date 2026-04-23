@@ -373,6 +373,7 @@ class App(BaseApp):
                     type=CredentialType.TMA,
                     identifier=tma_data.get("username"),
                     external_subject_id=telegram_id,
+                    failed_attempts=0,
                     meta={
                         "first_name": tma_data.get("first_name"),
                         "last_name": tma_data.get("last_name"),
