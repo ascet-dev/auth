@@ -1,5 +1,4 @@
-from adc_aiopg.repository import PostgresAccessLayer
-from adc_aiopg.repository.dao import TableDescriptor
+from adc_aiopg.repository import PGDataAccessObject, PostgresAccessLayer, TableDescriptor
 
 import models as m
 from models.client_app import ClientApp
@@ -13,14 +12,13 @@ from models.session import Session
 
 
 class DAO(PostgresAccessLayer, metadata=m.base.meta):  # type: ignore[call-arg]
-    identities = TableDescriptor[AuthIdentity](AuthIdentity, table_name="auth_identities")
-    credentials = TableDescriptor[Credential](Credential, table_name="auth_credentials")
-    sessions = TableDescriptor[Session](Session, table_name="auth_sessions")
-    client_apps = TableDescriptor[ClientApp](ClientApp, table_name="auth_client_apps")
-    oauth_providers = TableDescriptor[AuthOauthProvider](AuthOauthProvider, table_name="auth_oauth_providers")
-    otp_challenges = TableDescriptor[AuthOtpChallenge](AuthOtpChallenge, table_name="auth_otp_challenges")
-    identity_external_links = TableDescriptor[AuthIdentityExternalLink](
-        AuthIdentityExternalLink,
-        table_name="auth_identity_external_links",
+    identities = TableDescriptor(PGDataAccessObject.from_model(AuthIdentity, "auth_identities"))
+    credentials = TableDescriptor(PGDataAccessObject.from_model(Credential, "auth_credentials"))
+    sessions = TableDescriptor(PGDataAccessObject.from_model(Session, "auth_sessions"))
+    client_apps = TableDescriptor(PGDataAccessObject.from_model(ClientApp, "auth_client_apps"))
+    oauth_providers = TableDescriptor(PGDataAccessObject.from_model(AuthOauthProvider, "auth_oauth_providers"))
+    otp_challenges = TableDescriptor(PGDataAccessObject.from_model(AuthOtpChallenge, "auth_otp_challenges"))
+    identity_external_links = TableDescriptor(
+        PGDataAccessObject.from_model(AuthIdentityExternalLink, "auth_identity_external_links"),
     )
-    logins = TableDescriptor[Login](Login, table_name="auth_logins")
+    logins = TableDescriptor(PGDataAccessObject.from_model(Login, "auth_logins"))

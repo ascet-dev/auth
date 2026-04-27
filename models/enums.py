@@ -1,9 +1,9 @@
-from enum import Enum
+from enum import StrEnum
 
 from models.base import meta
 
 
-class IdentityStatus(str, Enum):
+class IdentityStatus(StrEnum):
     __meta__ = meta
 
     ACTIVE = "ACTIVE"
@@ -11,7 +11,7 @@ class IdentityStatus(str, Enum):
     DELETED = "DELETED"
 
 
-class CredentialType(str, Enum):
+class CredentialType(StrEnum):
     __meta__ = meta
 
     PASSWORD = "PASSWORD"  # noqa: S105
@@ -22,7 +22,7 @@ class CredentialType(str, Enum):
     TMA = "TMA"
 
 
-class SessionStatus(str, Enum):
+class SessionStatus(StrEnum):
     __meta__ = meta
 
     ACTIVE = "ACTIVE"
@@ -31,7 +31,7 @@ class SessionStatus(str, Enum):
     COMPROMISED = "COMPROMISED"
 
 
-class OtpChannel(str, Enum):
+class OtpChannel(StrEnum):
     __meta__ = meta
 
     SMS = "SMS"
@@ -40,7 +40,7 @@ class OtpChannel(str, Enum):
     TELEGRAM = "TELEGRAM"
 
 
-class AuthClientType(str, Enum):
+class AuthClientType(StrEnum):
     __meta__ = meta
 
     PUBLIC = "PUBLIC"

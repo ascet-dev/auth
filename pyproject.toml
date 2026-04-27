@@ -17,7 +17,7 @@ dependencies = [
     "adc-webkit",
     "adc-appkit==0.2.0",
     "adc-logger",
-    "adc-aiopg",
+    "adc-aiopg>=1.0.0",
     "adc-aios3",
     "python-jose[cryptography]",
     # Settings and validation
@@ -93,6 +93,7 @@ skip = [
 [tool.ruff]
 target-version = "py311"
 line-length = 120
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.format]
 quote-style = "double"

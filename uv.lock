@@ -8,7 +8,7 @@ resolution-markers = [
 
 [[package]]
 name = "adc-aiopg"
-version = "0.1.0"
+version = "1.0.0"
 source = { registry = "https://gitlab.mychili.id/api/v4/projects/25/packages/pypi/simple" }
 dependencies = [
     { name = "alembic" },
@@ -20,9 +20,9 @@ dependencies = [
     { name = "sqlmodel" },
     { name = "ujson" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/57/fb/b9f91f3107585e93f75d940b787fd01a32cff7f9df3d27db2d8cf4d43c90/adc_aiopg-0.1.0.tar.gz", hash = "sha256:bf634b5320a0550afc9df2719dd0d9af6371a28437ac84e631c3a10a3c8b562a", size = 12294, upload-time = "2025-11-12T18:35:53.908Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/d0/d6b29509c5561b7cb350a3f33bc4464178299155ede16e75ef506b2a7b17/adc_aiopg-1.0.0.tar.gz", hash = "sha256:e07600a6dd2caa7d025be0ae654ab73e5b69cdd7b5ee01ed3632c4c2d62fed33", size = 18067, upload-time = "2026-04-27T07:02:44.404Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/cd/7607261a57ae7ff90bd56325ba8a69763874653bfd458d17c43e4b2fc538/adc_aiopg-0.1.0-py3-none-any.whl", hash = "sha256:1b6552298b40a08bc70efbb1068e4c24ed73078bab3688ee975d22eb608950f6", size = 13164, upload-time = "2025-11-12T18:35:52.045Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/83/053da74884bbd5625361197d4e3283dc7ac7ad0af6961f5f2a012471d21c/adc_aiopg-1.0.0-py3-none-any.whl", hash = "sha256:ab44d104198f5efe23d550df2f5b9f0253de5984a9294b876569a87e90d756f5", size = 15212, upload-time = "2026-04-27T07:02:42.773Z" },
 ]
 
 [[package]]
@@ -1163,7 +1163,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "adc-aiopg" },
+    { name = "adc-aiopg", specifier = ">=1.0.0" },
     { name = "adc-aios3" },
     { name = "adc-appkit", specifier = "==0.2.0" },
     { name = "adc-logger" },
