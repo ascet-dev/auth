@@ -151,7 +151,7 @@ data-migration: confirm-danger ## Apply data migration
 #=============================================================================#
 
 docker-build: ## Build Docker image (use TARGET=development or TARGET=production)
-	docker build --target $(or $(TARGET),production) -t stronica_backend:latest .
+	docker build --target $(or $(TARGET),production) -t wb-auth:latest .
 
 docker-run: ## Run with Docker Compose
 	docker-compose up -d --force-recreate
@@ -298,61 +298,10 @@ pre-commit-changed: ## Run pre-commit on staged files only (if pre-commit works)
 #=============================================================================#
 
 env-example: ## Create example environment file
-	@echo "Creating .env file with default settings..."
-	@echo "# =====================" > .env
-	@echo "# Application Settings" >> .env
-	@echo "# =====================" >> .env
-	@echo "APP_HOST=0.0.0.0" >> .env
-	@echo "APP_PORT=8000" >> .env
-	@echo "DEBUG=true" >> .env
-	@echo "ENV=development" >> .env
-	@echo "" >> .env
-	@echo "# =====================" >> .env
-	@echo "# Database Configuration" >> .env
-	@echo "# =====================" >> .env
-	@echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/fitness" >> .env
-	@echo "DB_POOL_SIZE=10" >> .env
-	@echo "DB_MAX_OVERFLOW=20" >> .env
-	@echo "DB_POOL_TIMEOUT=30" >> .env
-	@echo "" >> .env
-	@echo "# =====================" >> .env
-	@echo "# Security" >> .env
-	@echo "# =====================" >> .env
-	@echo "SECRET_KEY=your-super-secret-key-change-this-in-production" >> .env
-	@echo "JWT_SECRET_KEY=your-jwt-secret-key-change-this-in-production" >> .env
-	@echo "JWT_ALGORITHM=HS256" >> .env
-	@echo "JWT_EXPIRATION_HOURS=24" >> .env
-	@echo "" >> .env
-	@echo "# =====================" >> .env
-	@echo "# S3 Configuration (MinIO)" >> .env
-	@echo "# =====================" >> .env
-	@echo "S3_ENDPOINT_URL=http://localhost:9000" >> .env
-	@echo "S3_ACCESS_KEY=minioadmin" >> .env
-	@echo "S3_SECRET_KEY=minioadmin" >> .env
-	@echo "S3_BUCKET=bucket" >> .env
-	@echo "" >> .env
-	@echo "# =====================" >> .env
-	@echo "# Logging" >> .env
-	@echo "# =====================" >> .env
-	@echo "LOG_LEVEL=INFO" >> .env
-	@echo "LOG_FORMAT=json" >> .env
-	@echo "LOG_FILE=logs/app.log" >> .env
-	@echo "" >> .env
-	@echo "# =====================" >> .env
-	@echo "# Feature Flags" >> .env
-	@echo "# =====================" >> .env
-	@echo "ENABLE_SWAGGER=true" >> .env
-	@echo "ENABLE_REDOC=true" >> .env
-	@echo "ENABLE_METRICS=true" >> .env
-	@echo "ENABLE_HEALTH_CHECK=true" >> .env
-	@echo "" >> .env
-	@echo "# =====================" >> .env
-	@echo "# Development Settings" >> .env
-	@echo "# =====================" >> .env
-	@echo "RELOAD=true" >> .env
-	@echo "WORKERS=1" >> .env
-	@echo "✅ .env file created with default settings!"
-	@echo "Please review and customize the settings for your environment."
+	@echo "PG__CONNECTION__DSN=postgresql://postgres:postgres@localhost:5432/auth" > .env
+	@echo "APP__PORT=8002" >> .env
+	@echo "AUTH__TELEGRAM_BOT_TOKEN=your-bot-token" >> .env
+	@echo ".env created."
 
 
 #=============================================================================#

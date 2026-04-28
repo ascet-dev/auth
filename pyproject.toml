@@ -8,7 +8,7 @@ include = ["web", "models", "services", "settings"]
 exclude = ["tests*", "alembic*", "logs*"]
 
 [project]
-name = "my-fitness"
+name = "auth"
 version = "0.1.0"
 requires-python = ">=3.11"
 

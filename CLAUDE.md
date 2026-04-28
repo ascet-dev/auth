@@ -150,7 +150,7 @@ async with self.log_login_attempt(method="tma", identifier=None, ip_address=ip, 
 Pydantic-settings, разделитель `__`, prefix отсутствует:
 
 ```bash
-PG__CONNECTION__DSN=postgresql://postgres:postgres@localhost:5432/fitness
+PG__CONNECTION__DSN=postgresql://postgres:postgres@localhost:5432/auth
 AUTH__TELEGRAM_BOT_TOKEN=123456:ABC-DEF...  # для TMA
 AUTH__TMA_AUTH_DATE_MAX_AGE=300             # максимальный возраст initData в секундах
 AUTH__PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n..."

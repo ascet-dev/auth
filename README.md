@@ -173,7 +173,7 @@ make init
 
 ```bash
 # PostgreSQL
-PG__CONNECTION__DSN=postgresql://postgres:postgres@localhost:5432/fitness
+PG__CONNECTION__DSN=postgresql://postgres:postgres@localhost:5432/auth
 
 # JWT (обязательно заменить в продакшене!)
 AUTH__ALGORITHMS=["RS256"]

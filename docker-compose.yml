@@ -1,11 +1,11 @@
 version: "3.8"
 services:
   postgres:
-    image: postgres:15
+    image: postgres:18
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: fitness
+      POSTGRES_DB: auth
     ports:
       - "5432:5432"
     volumes:
@@ -25,7 +25,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      PG__CONNECTION__DSN: postgresql://postgres:postgres@postgres:5432/fitness
+      PG__CONNECTION__DSN: postgresql://postgres:postgres@postgres:5432/auth
     command: alembic upgrade head
 
   data_migrations:
@@ -39,7 +39,7 @@ services:
       postgres_migrations:
         condition: service_completed_successfully
     environment:
-      PG__CONNECTION__DSN: postgresql://postgres:postgres@postgres:5432/fitness
+      PG__CONNECTION__DSN: postgresql://postgres:postgres@postgres:5432/auth
     command: python manage.py apply-sql data.sql
 
   backend:
@@ -62,7 +62,7 @@ services:
       ENV: COMPOSE
       HOST: 0.0.0.0
       PORT: 8001
-      PG__CONNECTION__DSN: postgresql://postgres:postgres@postgres:5432/fitness
+      PG__CONNECTION__DSN: postgresql://postgres:postgres@postgres:5432/auth
       S3__CONNECTION__URL: "http://minio:9000"
     command: python manage.py start-web
 

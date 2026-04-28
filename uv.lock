@@ -349,6 +349,71 @@ wheels = [
 ]
 
 [[package]]
+name = "auth"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "adc-aiopg" },
+    { name = "adc-aios3" },
+    { name = "adc-appkit" },
+    { name = "adc-logger" },
+    { name = "adc-webkit" },
+    { name = "aiohttp" },
+    { name = "click" },
+    { name = "passlib", extra = ["argon2"] },
+    { name = "psycopg2-binary" },
+    { name = "pydantic-settings" },
+    { name = "python-jose", extra = ["cryptography"] },
+    { name = "sentry-sdk" },
+    { name = "uvloop" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "bandit" },
+    { name = "coverage", extra = ["toml"] },
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "adc-aiopg", specifier = ">=1.0.0" },
+    { name = "adc-aios3" },
+    { name = "adc-appkit", specifier = "==0.2.0" },
+    { name = "adc-logger" },
+    { name = "adc-webkit" },
+    { name = "aiohttp", specifier = ">=3.9.0" },
+    { name = "click", specifier = ">=8.1.7" },
+    { name = "passlib", extras = ["argon2"], specifier = ">=1.7.4" },
+    { name = "psycopg2-binary", specifier = ">=2.9.11" },
+    { name = "pydantic-settings", specifier = ">=2.2.0" },
+    { name = "python-jose", extras = ["cryptography"] },
+    { name = "sentry-sdk", specifier = ">=2.26.1" },
+    { name = "uvloop", specifier = ">=0.19.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "bandit", specifier = ">=1.8.6" },
+    { name = "coverage", extras = ["toml"], specifier = ">=7.9.1" },
+    { name = "mypy", specifier = ">=1.18.2" },
+    { name = "pre-commit", specifier = ">=4.3.0" },
+    { name = "pytest", specifier = ">=8.2.2" },
+    { name = "pytest-asyncio", specifier = ">=1.0.0" },
+    { name = "pytest-cov", specifier = ">=6.2.1" },
+    { name = "pytest-mock", specifier = ">=3.14.1" },
+    { name = "pytest-xdist", specifier = ">=3.7.0" },
+    { name = "ruff", specifier = ">=0.13.1" },
+]
+
+[[package]]
 name = "bandit"
 version = "1.8.6"
 source = { registry = "https://gitlab.mychili.id/api/v4/projects/25/packages/pypi/simple" }
@@ -1125,71 +1190,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ba/8f/0a60e501584145588be1af5cc829265701ba3c35a64aec8e07cbb71d39bb/multidict-6.7.0-cp314-cp314t-win_amd64.whl", hash = "sha256:09929cab6fcb68122776d575e03c6cc64ee0b8fca48d17e135474b042ce515cd", size = 53507, upload-time = "2025-10-06T14:51:53.672Z" },
     { url = "https://files.pythonhosted.org/packages/7f/ae/3148b988a9c6239903e786eac19c889fab607c31d6efa7fb2147e5680f23/multidict-6.7.0-cp314-cp314t-win_arm64.whl", hash = "sha256:cc41db090ed742f32bd2d2c721861725e6109681eddf835d0a82bd3a5c382827", size = 44804, upload-time = "2025-10-06T14:51:55.415Z" },
     { url = "https://files.pythonhosted.org/packages/b7/da/7d22601b625e241d4f23ef1ebff8acfc60da633c9e7e7922e24d10f592b3/multidict-6.7.0-py3-none-any.whl", hash = "sha256:394fc5c42a333c9ffc3e421a4c85e08580d990e08b99f6bf35b4132114c5dcb3", size = 12317, upload-time = "2025-10-06T14:52:29.272Z" },
-]
-
-[[package]]
-name = "my-fitness"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "adc-aiopg" },
-    { name = "adc-aios3" },
-    { name = "adc-appkit" },
-    { name = "adc-logger" },
-    { name = "adc-webkit" },
-    { name = "aiohttp" },
-    { name = "click" },
-    { name = "passlib", extra = ["argon2"] },
-    { name = "psycopg2-binary" },
-    { name = "pydantic-settings" },
-    { name = "python-jose", extra = ["cryptography"] },
-    { name = "sentry-sdk" },
-    { name = "uvloop" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "bandit" },
-    { name = "coverage", extra = ["toml"] },
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-    { name = "pytest-xdist" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "adc-aiopg", specifier = ">=1.0.0" },
-    { name = "adc-aios3" },
-    { name = "adc-appkit", specifier = "==0.2.0" },
-    { name = "adc-logger" },
-    { name = "adc-webkit" },
-    { name = "aiohttp", specifier = ">=3.9.0" },
-    { name = "click", specifier = ">=8.1.7" },
-    { name = "passlib", extras = ["argon2"], specifier = ">=1.7.4" },
-    { name = "psycopg2-binary", specifier = ">=2.9.11" },
-    { name = "pydantic-settings", specifier = ">=2.2.0" },
-    { name = "python-jose", extras = ["cryptography"] },
-    { name = "sentry-sdk", specifier = ">=2.26.1" },
-    { name = "uvloop", specifier = ">=0.19.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "bandit", specifier = ">=1.8.6" },
-    { name = "coverage", extras = ["toml"], specifier = ">=7.9.1" },
-    { name = "mypy", specifier = ">=1.18.2" },
-    { name = "pre-commit", specifier = ">=4.3.0" },
-    { name = "pytest", specifier = ">=8.2.2" },
-    { name = "pytest-asyncio", specifier = ">=1.0.0" },
-    { name = "pytest-cov", specifier = ">=6.2.1" },
-    { name = "pytest-mock", specifier = ">=3.14.1" },
-    { name = "pytest-xdist", specifier = ">=3.7.0" },
-    { name = "ruff", specifier = ">=0.13.1" },
 ]
 
 [[package]]
