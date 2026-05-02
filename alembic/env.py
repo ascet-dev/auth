@@ -6,5 +6,5 @@ from settings import cfg
 run_alembic(
     sqlalchemy_url=cfg.pg.connection.dsn,
     target_metadata=DAO.meta,
-    configure_kwargs={"template_args": {"schema_name": DAO.meta.schema}},
+    configure_kwargs={"template_args": {"schema_name": DAO.meta.schema}, "version_table_schema": "auth"},
 )
