@@ -23,11 +23,11 @@ ALL_TABLES = ", ".join(
         "auth_sessions",
         "auth_otp_challenges",
         "auth_admin_grants",
-        "auth_method_settings",
+        "auth_client_app_connectors",
+        "auth_connectors",
         "auth_credentials",
         "auth_identity_external_links",
         "auth_identities",
-        "auth_oauth_providers",
         "auth_client_apps",
     )
 )

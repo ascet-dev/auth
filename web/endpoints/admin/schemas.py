@@ -26,8 +26,9 @@ class ClientAppSearch(AdminSearch):
     pass
 
 
-class OauthProviderSearch(AdminSearch):
-    pass
+class ConnectorSearch(AdminSearch):
+    type: AuthMethod | None = None
+    enabled: bool | None = None
 
 
 class IdentitySearch(AdminSearch):
@@ -78,21 +79,17 @@ class ClientAppRead(BaseRead):
     type: AuthClientType | None = None
     allowed_redirect_uris: list[str] | None = None
     allowed_scopes: list[str] | None = None
-    allowed_auth_methods: list[str] | None = None
     access_token_ttl_sec: int
     refresh_token_ttl_sec: int
 
 
-class OauthProviderRead(BaseRead):
+class ConnectorRead(BaseRead):
+    key: str
+    type: AuthMethod
     name: str
-    client_id: str
-    auth_url: str
-    token_url: str
-    jwks_url: str | None = None
-    userinfo_url: str | None = None
     enabled: bool
-    # client_secret write-only: наружу — только факт его наличия
-    client_secret_set: bool = False
+    # Секреты (bot_token, client_secret) заменены на флаги <key>_set
+    settings: dict = {}
 
 
 class IdentityRead(BaseRead):
@@ -158,9 +155,6 @@ class ClientAppCreate(PydanticBaseModel):
     type: AuthClientType = AuthClientType.PUBLIC
     allowed_redirect_uris: list[str] = []
     allowed_scopes: list[str] = []
-    # None/пусто = все включённые глобально методы; иначе whitelist
-    # ("password", "tma", "otp", "oauth" или "oauth:<provider>")
-    allowed_auth_methods: list[str] | None = None
     access_token_ttl_sec: int = 900
     refresh_token_ttl_sec: int = 60 * 60 * 24 * 30
 
@@ -171,7 +165,6 @@ class ClientAppUpdate(PydanticBaseModel):
     type: AuthClientType | None = None
     allowed_redirect_uris: list[str] | None = None
     allowed_scopes: list[str] | None = None
-    allowed_auth_methods: list[str] | None = None
     access_token_ttl_sec: int | None = None
     refresh_token_ttl_sec: int | None = None
 
@@ -204,29 +197,24 @@ class GrantCreate(PydanticBaseModel):
     role: AdminRole = AdminRole.ADMIN
 
 
-# ---------------------------------------------------------------- способы входа
+# ---------------------------------------------------------------- коннекторы
 
 
-class ByMethodPath(PydanticBaseModel):
-    method: AuthMethod
+class ConnectorCreate(PydanticBaseModel):
+    key: str = Field(min_length=1, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    type: AuthMethod
+    name: str
+    enabled: bool = True
+    settings: dict = {}
 
 
-class AuthMethodRead(Base):
-    method: AuthMethod
-    enabled: bool
-    configured: bool = False  # есть ли строка в БД (false = дефолты из кода)
-    # PASSWORD
-    allow_registration: bool | None = None
-    # TMA (bot_token write-only: наружу — только факт наличия)
-    bot_token_set: bool = False
-    env_bot_token_set: bool = False
-    auth_date_max_age: int | None = None
-
-
-class AuthMethodUpdate(PydanticBaseModel):
+class ConnectorUpdate(PydanticBaseModel):
+    # key и type immutable
+    name: str | None = None
     enabled: bool | None = None
-    # PASSWORD
-    allow_registration: bool | None = None
-    # TMA: None = не менять, пустая строка = очистить (fallback на env)
-    bot_token: str | None = None
-    auth_date_max_age: int | None = None
+    # merge по ключам; секрет: отсутствие/None = не менять, "" = очистить
+    settings: dict | None = None
+
+
+class ClientAppConnectorsUpdate(PydanticBaseModel):
+    connector_ids: list[UUID]

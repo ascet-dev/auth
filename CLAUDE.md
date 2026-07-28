@@ -12,15 +12,15 @@
 │   ├── credential.py    # Credential (identity_id, type, identifier, provider, secret_hash, external_subject_id, meta)
 │   ├── session.py       # Session (identity_id, client_app_id, refresh_token_hash, status)
 │   ├── client_app.py    # ClientApp (key, type, TTLs, allowed URIs/scopes)
-│   ├── oauth_provider.py # AuthOauthProvider (name, client_id/secret, URLs, enabled)
+│   ├── connector.py     # AuthConnector — экземпляр способа входа (key, type, enabled, settings JSONB)
+│   ├── client_app_connector.py  # M2M: какие коннекторы разрешены приложению
 │   ├── otp_challenge.py # AuthOtpChallenge (channel, destination, code_hash, expires_at)
 │   ├── logins.py        # Login (method, identifier, success, ip, user_agent) — аудит
 │   ├── admin_grant.py   # AuthAdminGrant (identity_id, role, granted_by) — админские права
-│   ├── auth_method.py   # AuthMethodSetting (method, enabled, settings JSONB) — глобальный конфиг способов входа
 │   └── identity_external_link.py  # Маппинг identity → внешняя система
 ├── services/
-│   ├── service.py       # App (BaseApp) — ВСЯ бизнес-логика: login_by_*, sessions, JWT, bootstrap_owner, гранты
-│   ├── repositories.py  # DAO (PostgresAccessLayer + 9 TableDescriptor)
+│   ├── service.py       # App (BaseApp) — ВСЯ бизнес-логика: login_by_*, resolve_auth_connector, sessions, JWT, bootstrap_owner, гранты
+│   ├── repositories.py  # DAO (PostgresAccessLayer + 10 TableDescriptor)
 │   ├── password_service.py  # Argon2id хеширование
 │   ├── login_attempt_logger.py  # Async context manager для аудита логинов
 │   └── components/
@@ -45,13 +45,13 @@
 │       └── admin/            # Admin CRUD API (auth = admin_jwt)
 │           ├── base.py       # AdminEndpoint (guard+роли), generic AdminList/Get/Create/Update/Archive, Conflict(409)
 │           ├── schemas.py    # Search/Read/Write модели (read-модели явные — секреты маскируются)
-│           ├── client_apps.py, oauth_providers.py, identities.py, sessions.py, logins.py, grants.py
-│           └── auth_methods.py  # GET/PATCH /admin/auth-methods — глобальные тумблеры и параметры методов
+│           ├── client_apps.py, identities.py, sessions.py, logins.py, grants.py
+│           └── connectors.py # CRUD /admin/connectors + маппинг /admin/client-apps/{id}/connectors
 ├── frontend/            # Админский SPA: React + Vite + TS + Mantine + TanStack Query
 │   ├── src/api/         # client.ts (access в памяти, refresh в localStorage, авто-refresh на 401), types.ts
 │   ├── src/auth/        # AuthContext (login/logout/me/role)
 │   ├── src/components/  # Layout, RequireAuth, DataTable
-│   └── src/pages/       # Login, ClientApps, OauthProviders, Identities(+Detail), Sessions, Logins, Grants
+│   └── src/pages/       # Login, ClientApps, Connectors, Identities(+Detail), Sessions, Logins, Grants
 ├── settings/
 │   ├── settings.py      # CFG — корневой конфиг, объединяет подмодули
 │   ├── auth.py          # JWT (RS256, TTLs, ключи), Telegram, owner_login/owner_password (bootstrap)
@@ -174,25 +174,32 @@ async with self.log_login_attempt(method="tma", identifier=None, ip_address=ip, 
 | Метод | Тип credential | Как ищет identity | Файл |
 |-------|---------------|-------------------|------|
 | Password | `PASSWORD` | `search(identifier=login, type=PASSWORD)` | service.py:login_by_password |
-| OAuth 2.0 | `OAUTH` | `search(provider=provider, external_subject_id=sub)` | service.py:login_by_oauth |
+| OAuth 2.0 | `OAUTH` | `search(provider=connector_key, external_subject_id=sub)` | service.py:login_by_oauth |
 | TMA | `TMA` | `search(type=TMA, external_subject_id=telegram_id)` | service.py:login_by_tma |
 | Admin | `PASSWORD` | `_verify_password_credential` + активный грант | service.py:login_by_admin |
 
 Паттерн одинаковый: найти credential → получить identity_id → создать сессию → вернуть JWT.
 
-### Настройка способов входа
+### Коннекторы — экземпляры способов входа
 
-Два уровня (управляются из админки):
+Модель как в Auth0 (connections): коннектор = именованный экземпляр метода,
+одного типа может быть много (два TMA-бота, два Google-приложения, разные парольные политики).
 
-- **Глобально** — `auth_method_settings` (enabled + params JSONB): выключатель метода,
-  `allow_registration` для PASSWORD, `bot_token` (write-only, fallback на env) и
-  `auth_date_max_age` для TMA. Нет строки в БД → дефолты из `AUTH_METHOD_DEFAULTS`
-  (service.py) — сид не нужен. OAuth-провайдеры и их секреты — отдельная таблица/страница.
-- **На приложение** — `client_app.allowed_auth_methods`: whitelist
-  (`password`, `tma`, `otp`, `oauth` или `oauth:<provider>`); NULL/пусто = все включённые.
-
-Guard — `App.ensure_auth_method_allowed(method, client_app_id, provider)` в начале каждого
-login-флоу. `login_by_admin` guard НЕ использует: выключив пароль, нельзя отрезать себе админку.
+- `auth_connectors`: `key` (слаг; для OAUTH это параметр `provider` в `/auth/oauth/*`),
+  `type` (PASSWORD/OTP/TMA/OAUTH), `enabled`, `settings JSONB`:
+  PASSWORD — `max_failed_attempts`, `lockout_minutes`, `allow_registration`;
+  TMA — `bot_token` (write-only), `auth_date_max_age`; OAUTH — `client_id`,
+  `client_secret` (write-only), `auth_url`, `token_url`, `jwks_url`, `userinfo_url`.
+- Привязка к приложениям — M2M `auth_client_app_connectors`; нет привязок = все включённые.
+  На приложение — максимум один PASSWORD-коннектор.
+- Резолв — `App.resolve_auth_connector(type, client_app_id, key)` в начале login-флоу:
+  key задан → он; один доступный → он; несколько → клиент передаёт `connector` (TMA) /
+  `provider` (OAuth); коннекторов типа нет вообще → встроенные дефолты
+  (PASSWORD — политика из констант, TMA — env bot token). `login_by_admin` резолвер
+  НЕ использует: выключив пароль, нельзя отрезать себе админку.
+- Identity-линковка глобальная: один telegram_id = одна identity через любых ботов
+  (яндекс-модель: много приложений — один аккаунт). `credential.provider` хранит key
+  коннектора — точка будущей изоляции, если понадобится.
 
 ## Конфигурация
 

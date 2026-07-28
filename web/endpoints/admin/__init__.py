@@ -1,4 +1,3 @@
-from .auth_methods import AdminListAuthMethods, AdminUpdateAuthMethod
 from .client_apps import (
     AdminArchiveClientApp,
     AdminCreateClientApp,
@@ -6,37 +5,39 @@ from .client_apps import (
     AdminListClientApps,
     AdminUpdateClientApp,
 )
+from .connectors import (
+    AdminArchiveConnector,
+    AdminCreateConnector,
+    AdminGetClientAppConnectors,
+    AdminGetConnector,
+    AdminListConnectors,
+    AdminSetClientAppConnectors,
+    AdminUpdateConnector,
+)
 from .grants import AdminCreateGrant, AdminListGrants, AdminRevokeGrant
 from .identities import AdminGetIdentity, AdminListIdentities
 from .logins import AdminListLogins
-from .oauth_providers import (
-    AdminArchiveOauthProvider,
-    AdminCreateOauthProvider,
-    AdminGetOauthProvider,
-    AdminListOauthProviders,
-    AdminUpdateOauthProvider,
-)
 from .sessions import AdminListSessions, AdminRevokeSession
 
 __all__ = [
     "AdminArchiveClientApp",
-    "AdminListAuthMethods",
-    "AdminUpdateAuthMethod",
-    "AdminArchiveOauthProvider",
+    "AdminArchiveConnector",
     "AdminCreateClientApp",
+    "AdminCreateConnector",
     "AdminCreateGrant",
-    "AdminCreateOauthProvider",
     "AdminGetClientApp",
+    "AdminGetClientAppConnectors",
+    "AdminGetConnector",
     "AdminGetIdentity",
-    "AdminGetOauthProvider",
     "AdminListClientApps",
+    "AdminListConnectors",
     "AdminListGrants",
     "AdminListIdentities",
     "AdminListLogins",
-    "AdminListOauthProviders",
     "AdminListSessions",
     "AdminRevokeGrant",
     "AdminRevokeSession",
+    "AdminSetClientAppConnectors",
     "AdminUpdateClientApp",
-    "AdminUpdateOauthProvider",
+    "AdminUpdateConnector",
 ]
