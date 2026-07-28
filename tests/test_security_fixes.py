@@ -111,8 +111,27 @@ async def test_lockout_not_bypassable_by_concurrency(client, app, test_client_ap
         "/auth/login/password",
         json={"login": "u@x.com", "password": "secret123", "client_app_id": str(test_client_app.id)},
     )
-    assert resp.status_code == 400
-    assert "locked" in resp.json()["message"].lower()
+    assert resp.status_code == 401
+
+
+async def test_lockout_state_is_not_observable(client, app, test_client_app):
+    """Ответ на залоченную учётку неотличим от несуществующей (enumeration)."""
+    await client.post("/auth/register/password", json={"login": "u@x.com", "password": "secret123"})
+
+    payload = {"login": "u@x.com", "password": "wrong", "client_app_id": str(test_client_app.id)}
+    for _ in range(6):
+        await client.post("/auth/login/password", json=payload)
+
+    credentials = await app.dao.credentials.search(identifier="u@x.com", archived=False)
+    assert credentials[0].locked_until is not None
+
+    locked = await client.post("/auth/login/password", json=payload)
+    unknown = await client.post(
+        "/auth/login/password",
+        json={"login": "nobody@x.com", "password": "wrong", "client_app_id": str(test_client_app.id)},
+    )
+    assert locked.status_code == unknown.status_code == 401
+    assert locked.json()["message"] == unknown.json()["message"] == "Invalid credentials"
 
 
 async def test_expired_lockout_resets_counter(client, app, test_client_app):
@@ -310,3 +329,33 @@ async def test_admin_cannot_revoke_grants(client, app, auth_headers, admin_heade
     grant = await app.get_active_admin_grant(owner["identity_id"])
     resp = await client.delete(f"/admin/grants/{grant.id}", headers=admin_headers)
     assert resp.status_code == 403
+
+
+async def test_explicit_null_in_patch_is_ignored(client, auth_headers):
+    """{"name": null} — «не менять», а не NOT NULL violation с 500."""
+    resp = await client.post("/admin/client-apps", json={"key": "app-x", "name": "App X"}, headers=auth_headers)
+    app_id = resp.json()["id"]
+
+    resp = await client.patch(
+        f"/admin/client-apps/{app_id}",
+        json={"name": None, "refresh_token_ttl_sec": 7200},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "App X"
+    assert resp.json()["refresh_token_ttl_sec"] == 7200
+
+    # только null-ы = нечего менять
+    resp = await client.patch(f"/admin/client-apps/{app_id}", json={"name": None}, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+async def test_concurrent_duplicate_create_is_conflict(client, auth_headers):
+    """Гонка на unique-индексе — 409, а не 500."""
+    payloads = [{"key": "race", "name": f"App {i}"} for i in range(5)]
+    results = await asyncio.gather(
+        *[client.post("/admin/client-apps", json=p, headers=auth_headers) for p in payloads],
+    )
+    codes = sorted(r.status_code for r in results)
+    assert codes[0] == 200
+    assert set(codes[1:]) == {409}, [r.text for r in results]

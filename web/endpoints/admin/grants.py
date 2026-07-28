@@ -6,7 +6,7 @@ from models.enums import AdminRole
 from web.endpoints.schemas import OkResponse
 
 from . import schemas as s
-from .base import AdminEndpoint, AdminList, Conflict, dump_entity
+from .base import AdminEndpoint, AdminList, Conflict, conflict_on_unique, dump_entity
 
 
 class AdminListGrants(AdminList):
@@ -24,7 +24,7 @@ class AdminCreateGrant(AdminEndpoint):
     response = Response(s.GrantRead)
 
     async def execute(self, ctx: Ctx) -> dict:
-        async with self.admin_scope(ctx) as app:
+        async with self.admin_scope(ctx) as app, conflict_on_unique():
             try:
                 grant = await app.grant_admin_role(
                     identity_id=ctx.body.identity_id,
