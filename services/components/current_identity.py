@@ -36,20 +36,26 @@ class CurrentIdentity(Component[AuthIdentity]):
             identity = app.current_identity  # автоматически валидированный AuthIdentity
     """
 
-    async def _start(self, sub: UUID, dao: DAO) -> AuthIdentity:
+    async def _start(self, sub: UUID | None = None, dao: DAO | None = None) -> AuthIdentity | None:
         """
         Загружает и валидирует identity.
 
+        RequestScope стартует ВСЕ REQUEST-компоненты: если в ctx запроса
+        нет конфига для этого компонента — он стартует «пустым» (None).
+
         Args:
-            identity_id: UUID identity из контекста запроса
+            sub: UUID identity из контекста запроса
             dao: DAO для доступа к БД
 
         Returns:
-            AuthIdentity - валидированная identity
+            AuthIdentity - валидированная identity (или None вне контекста)
 
         Raises:
             ValueError: Если identity не найдена или не активна
         """
+        if sub is None or dao is None:
+            return None
+
         logger.debug("Loading identity: %s", sub)
 
         identity = await dao.identities.get_by_id(sub)

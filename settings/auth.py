@@ -13,6 +13,11 @@ class Auth(BaseSettings):
     telegram_bot_token: str | None = None
     tma_auth_date_max_age: int = 300  # секунд, максимальный возраст auth_date
 
+    # Bootstrap владельца (manage.py bootstrap-owner)
+    # Вне LOCAL-окружения пароль обязателен: AUTH__OWNER_PASSWORD
+    owner_login: str = "admin"
+    owner_password: str | None = None
+
     # TEST/DEVELOPMENT KEYS ONLY - DO NOT USE IN PRODUCTION!
     # In production, load keys from environment variables
     public_key: str = """-----BEGIN PUBLIC KEY-----

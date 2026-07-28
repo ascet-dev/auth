@@ -1,3 +1,4 @@
+from .admin_auth import AdminLogin, AdminMe, AdminRefreshSession
 from .auth_oauth import LoginByOauth, StartOauthFlow
 from .auth_otp import LoginByOtp, SendOtp
 from .auth_password import LoginByPassword, RegisterPassword
@@ -10,6 +11,9 @@ from .maintenance import CleanupOtp, CleanupSessions
 from .sessions import ListSessions, Logout, RefreshSession, RevokeAllSessions, RevokeSession
 
 __all__ = [
+    "AdminLogin",
+    "AdminMe",
+    "AdminRefreshSession",
     "Readiness",
     "Liveness",
     "RegisterPassword",

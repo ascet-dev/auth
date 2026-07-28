@@ -39,6 +39,42 @@ def start_web() -> None:
         logger.critical("Server stopped by user")
 
 
+@cli.command(short_help="bootstrap owner")
+@click.option("--login", "login", default=None, help="Логин овнера (default: AUTH__OWNER_LOGIN / 'admin')")
+@click.option("--password", "password", default=None, help="Пароль овнера (default: AUTH__OWNER_PASSWORD)")
+def bootstrap_owner(login: str | None, password: str | None) -> None:
+    """
+    Идемпотентная инициализация сервиса: системный client_app `auth-admin`
+    + identity с password credential + grant OWNER.
+    """
+    from web.app import app
+
+    login = login or cfg.auth.owner_login
+    password = password or cfg.auth.owner_password
+    if not password:
+        if cfg.env != "LOCAL":
+            raise click.ClickException(
+                "Owner password is required outside LOCAL env: set AUTH__OWNER_PASSWORD or pass --password",
+            )
+        password = "admin"  # noqa: S105 — дефолт только для LOCAL
+
+    async def do() -> None:
+        await app.start()
+        try:
+            result = await app.bootstrap_owner(login, password)
+            if result["created"]:
+                logger.info("Owner bootstrapped: identity %s, login '%s'", result["identity_id"], login)
+            else:
+                logger.info("Owner already bootstrapped: identity %s", result["identity_id"])
+        finally:
+            await app.stop()
+
+    try:
+        asyncio.run(do())
+    except KeyboardInterrupt:
+        logger.critical("Command stopped by user")
+
+
 @cli.command(short_help="apply sql")
 @click.argument("file_path", type=click.Path(exists=True))
 def apply_sql(file_path: str) -> None:

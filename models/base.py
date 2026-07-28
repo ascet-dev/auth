@@ -28,7 +28,8 @@ class BaseModel(Base):
         sa_column_kwargs={"server_default": text("false"), "nullable": False, "insert_default": None},
     )
 
-    model_config = {"exclude": {"created", "updated", "archived"}, "arbitrary_types_allowed": True}
+    # unused-ignore в списке: pre-commit mypy (без зависимостей) и локальный mypy видят разные ошибки
+    model_config = {"exclude": {"created", "updated", "archived"}, "arbitrary_types_allowed": True}  # type: ignore[typeddict-unknown-key, unused-ignore]
 
 
 class BaseSearch(Base):

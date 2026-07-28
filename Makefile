@@ -56,7 +56,8 @@ run: ## Start the application
 #                                Testing                                      #
 #=============================================================================#
 
-test: ## Run all tests
+test: ## Run all tests (against dockerized postgres)
+	docker compose up -d --wait postgres
 	uv run pytest
 
 test-cov: ## Run tests with coverage
@@ -143,7 +144,7 @@ db-reset: confirm-danger ## Reset database (DANGER!)
 	uv run alembic upgrade head
 
 data-migration: confirm-danger ## Apply data migration
-	uv run python manage.py apply-sql data.sql
+	uv run python manage.py apply-sql data/init_data.sql
 
 
 #=============================================================================#
@@ -154,19 +155,19 @@ docker-build: ## Build Docker image (use TARGET=development or TARGET=production
 	docker build --target $(or $(TARGET),production) -t wb-auth:latest .
 
 docker-run: ## Run with Docker Compose
-	docker-compose up -d --force-recreate
+	docker compose up -d --force-recreate
 
 docker-stop: ## Stop Docker services
-	docker-compose down
+	docker compose down
 
 docker-logs: ## View Docker logs
-	docker-compose logs -f
+	docker compose logs -f
 
 docker-rebuild: ## Rebuild and run Docker services
-	docker-compose up --build -d --force-recreate
+	docker compose up --build -d --force-recreate
 
 docker-infra: ## Start only infrastructure (postgres, minio)
-	docker-compose up -d postgres minio minio_init
+	docker compose up -d --wait postgres minio minio_init
 
 
 #=============================================================================#
@@ -249,36 +250,53 @@ server-status: ## Show status of server processes
 #=============================================================================#
 
 install-hooks: ## Install pre-commit hooks
-	pre-commit install
+	uv run pre-commit install
 
 update-hooks: ## Update pre-commit hooks
-	pre-commit autoupdate
+	uv run pre-commit autoupdate
 
 #=============================================================================#
 #                        Development Workflow                                 #
 #=============================================================================#
 
-init: ## Install dependencies and start infrastructure
-	@echo "🚀 Initializing project..."
+init: ## Turnkey: full stack in docker (build SPA + backend, migrate, bootstrap owner)
+	@echo "🚀 Initializing project (full docker)..."
+	@$(MAKE) env-example
+	docker compose up -d --build --wait backend
+	@echo ""
+	@echo "✅ Auth service is up:"
+	@echo "   Admin UI:   http://localhost:8003/admin/ui/"
+	@echo "   API docs:   http://localhost:8003/doc"
+	@echo "   Login:      $${OWNER_LOGIN:-admin} / $${OWNER_PASSWORD:-admin}  (override via OWNER_LOGIN/OWNER_PASSWORD env)"
+
+dev-init: ## Hybrid dev: deps + hooks + dockerized PG + local migrations/bootstrap
+	@echo "🚀 Initializing dev environment..."
 	@echo "1. Installing dependencies..."
-	make install-dev
+	$(MAKE) install-dev
 	@echo "2. Creating .env file..."
-	make env-example
+	$(MAKE) env-example
 	@echo "3. Installing Git hooks..."
-	make install-hooks
+	$(MAKE) install-hooks
 	@echo "4. Starting infrastructure services..."
-	make docker-infra
-	@echo "5. Waiting for database to be ready..."
-	@sleep 5
-	@echo "6. Applying database migrations..."
-	make db-upgrade FORCE=true
-	@echo "7. Applying data migrations..."
-	make data-migration FORCE=true
-	@echo "✅ Project initialized successfully!"
+	$(MAKE) docker-infra
+	@echo "5. Applying database migrations..."
+	$(MAKE) db-upgrade FORCE=true
+	@echo "6. Applying data migrations..."
+	$(MAKE) data-migration FORCE=true
+	@echo "7. Bootstrapping owner..."
+	uv run python manage.py bootstrap-owner
+	@echo "✅ Dev environment initialized!"
 	@echo ""
 	@echo "Next steps:"
-	@echo "1. Start the application: make run"
-	@echo "2. Run tests: make test"
+	@echo "1. Start the API:        make run      (http://localhost:8002)"
+	@echo "2. Start the UI (dev):   make dev-ui   (http://localhost:5173/admin/ui/)"
+	@echo "3. Run tests:            make test"
+
+dev-ui: ## Vite dev server with proxy to local API (:8002)
+	cd frontend && npm install && npm run dev
+
+build-ui: ## Build the admin SPA into frontend/dist (served by local API)
+	cd frontend && npm install && npm run build
 
 check-all: test-cov lint type-check security ## Run all checks
 	@echo "All checks passed! ✅"
@@ -297,11 +315,15 @@ pre-commit-changed: ## Run pre-commit on staged files only (if pre-commit works)
 #                              Environment                                    #
 #=============================================================================#
 
-env-example: ## Create example environment file
-	@echo "PG__CONNECTION__DSN=postgresql://postgres:postgres@localhost:5432/auth" > .env
-	@echo "APP__PORT=8002" >> .env
-	@echo "AUTH__TELEGRAM_BOT_TOKEN=your-bot-token" >> .env
-	@echo ".env created."
+env-example: ## Create .env file (skips if it already exists)
+	@if [ -f .env ]; then \
+		echo ".env already exists, skipping."; \
+	else \
+		echo "PG__CONNECTION__DSN=postgresql://postgres:postgres@localhost:5432/auth" > .env; \
+		echo "APP__PORT=8002" >> .env; \
+		echo "AUTH__TELEGRAM_BOT_TOKEN=your-bot-token" >> .env; \
+		echo ".env created."; \
+	fi
 
 
 #=============================================================================#
@@ -311,7 +333,7 @@ env-example: ## Create example environment file
 reset: ## Reset project to clean state (stop infra + remove venv + clean all)
 	@echo "🧹 Resetting project to clean state..."
 	@echo "1. Stopping infrastructure services..."
-	docker-compose down -v
+	docker compose down -v
 	@echo "2. Removing virtual environment..."
 	rm -rf .venv
 	@echo "3. Cleaning all temporary files..."
@@ -374,4 +396,4 @@ release: ## Create a new release (update version, tag, push)
 	git commit -m "Bump version to $$version"; \
 	git tag -a "v$$version" -m "Release $$version"; \
 	git push origin main --tags; \
-	echo "✅ Release $$version created and pushed!" 
+	echo "✅ Release $$version created and pushed!"
