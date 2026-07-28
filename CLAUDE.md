@@ -16,6 +16,7 @@
 │   ├── otp_challenge.py # AuthOtpChallenge (channel, destination, code_hash, expires_at)
 │   ├── logins.py        # Login (method, identifier, success, ip, user_agent) — аудит
 │   ├── admin_grant.py   # AuthAdminGrant (identity_id, role, granted_by) — админские права
+│   ├── auth_method.py   # AuthMethodSetting (method, enabled, settings JSONB) — глобальный конфиг способов входа
 │   └── identity_external_link.py  # Маппинг identity → внешняя система
 ├── services/
 │   ├── service.py       # App (BaseApp) — ВСЯ бизнес-логика: login_by_*, sessions, JWT, bootstrap_owner, гранты
@@ -45,6 +46,7 @@
 │           ├── base.py       # AdminEndpoint (guard+роли), generic AdminList/Get/Create/Update/Archive, Conflict(409)
 │           ├── schemas.py    # Search/Read/Write модели (read-модели явные — секреты маскируются)
 │           ├── client_apps.py, oauth_providers.py, identities.py, sessions.py, logins.py, grants.py
+│           └── auth_methods.py  # GET/PATCH /admin/auth-methods — глобальные тумблеры и параметры методов
 ├── frontend/            # Админский SPA: React + Vite + TS + Mantine + TanStack Query
 │   ├── src/api/         # client.ts (access в памяти, refresh в localStorage, авто-refresh на 401), types.ts
 │   ├── src/auth/        # AuthContext (login/logout/me/role)
@@ -177,6 +179,20 @@ async with self.log_login_attempt(method="tma", identifier=None, ip_address=ip, 
 | Admin | `PASSWORD` | `_verify_password_credential` + активный грант | service.py:login_by_admin |
 
 Паттерн одинаковый: найти credential → получить identity_id → создать сессию → вернуть JWT.
+
+### Настройка способов входа
+
+Два уровня (управляются из админки):
+
+- **Глобально** — `auth_method_settings` (enabled + params JSONB): выключатель метода,
+  `allow_registration` для PASSWORD, `bot_token` (write-only, fallback на env) и
+  `auth_date_max_age` для TMA. Нет строки в БД → дефолты из `AUTH_METHOD_DEFAULTS`
+  (service.py) — сид не нужен. OAuth-провайдеры и их секреты — отдельная таблица/страница.
+- **На приложение** — `client_app.allowed_auth_methods`: whitelist
+  (`password`, `tma`, `otp`, `oauth` или `oauth:<provider>`); NULL/пусто = все включённые.
+
+Guard — `App.ensure_auth_method_allowed(method, client_app_id, provider)` в начале каждого
+login-флоу. `login_by_admin` guard НЕ использует: выключив пароль, нельзя отрезать себе админку.
 
 ## Конфигурация
 

@@ -28,6 +28,7 @@ interface FormState {
   name: string;
   allowed_redirect_uris: string[];
   allowed_scopes: string[];
+  allowed_auth_methods: string[];
   access_token_ttl_sec: number;
   refresh_token_ttl_sec: number;
 }
@@ -37,9 +38,12 @@ const EMPTY_FORM: FormState = {
   name: "",
   allowed_redirect_uris: [],
   allowed_scopes: [],
+  allowed_auth_methods: [],
   access_token_ttl_sec: 900,
   refresh_token_ttl_sec: 2592000,
 };
+
+const AUTH_METHOD_SUGGESTIONS = ["password", "tma", "otp", "oauth"];
 
 export function ClientAppsPage() {
   const queryClient = useQueryClient();
@@ -59,11 +63,13 @@ export function ClientAppsPage() {
 
   const save = useMutation({
     mutationFn: async (state: FormState) => {
-      const { id, key, ...rest } = state;
+      const { id, key, allowed_auth_methods, ...rest } = state;
+      // пустой список = все методы (в API это null)
+      const payload = { ...rest, allowed_auth_methods: allowed_auth_methods.length ? allowed_auth_methods : null };
       if (id) {
-        return api(`/admin/client-apps/${id}`, { method: "PATCH", body: JSON.stringify(rest) });
+        return api(`/admin/client-apps/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
       }
-      return api("/admin/client-apps", { method: "POST", body: JSON.stringify({ key, ...rest }) });
+      return api("/admin/client-apps", { method: "POST", body: JSON.stringify({ key, ...payload }) });
     },
     onSuccess: () => {
       setForm(null);
@@ -110,6 +116,7 @@ export function ClientAppsPage() {
                     name: row.name,
                     allowed_redirect_uris: row.allowed_redirect_uris ?? [],
                     allowed_scopes: row.allowed_scopes ?? [],
+                    allowed_auth_methods: row.allowed_auth_methods ?? [],
                     access_token_ttl_sec: row.access_token_ttl_sec,
                     refresh_token_ttl_sec: row.refresh_token_ttl_sec,
                   })
@@ -189,6 +196,13 @@ export function ClientAppsPage() {
               label="Allowed scopes"
               value={form.allowed_scopes}
               onChange={(value) => setForm({ ...form, allowed_scopes: value })}
+            />
+            <TagsInput
+              label="Allowed auth methods"
+              description="Пусто = все включённые глобально. Значения: password, tma, otp, oauth или oauth:<provider>"
+              data={AUTH_METHOD_SUGGESTIONS}
+              value={form.allowed_auth_methods}
+              onChange={(value) => setForm({ ...form, allowed_auth_methods: value })}
             />
             <NumberInput
               label="Access token TTL, sec"

@@ -20,7 +20,7 @@ from jose.jwt import decode as jwt_decode
 from models.admin_grant import AuthAdminGrant  # noqa: TC001
 from models.client_app import ClientApp  # noqa: TC001
 from models.credential import Credential  # noqa: TC001
-from models.enums import AdminRole, AuthClientType, CredentialType, IdentityStatus, SessionStatus
+from models.enums import AdminRole, AuthClientType, AuthMethod, CredentialType, IdentityStatus, SessionStatus
 from models.identity import AuthIdentity  # noqa: TC001
 from models.otp_challenge import AuthOtpChallenge  # noqa: TC001
 from models.session import Session  # noqa: TC001
@@ -44,6 +44,15 @@ HTTP_OK = 200
 # Системный client_app для сессий админов auth-сервиса
 AUTH_ADMIN_CLIENT_KEY = "auth-admin"
 AUTH_ADMIN_REFRESH_TTL_SEC = 60 * 60 * 24 * 7  # 7 дней
+
+# Дефолты способов входа: применяются, пока в auth_method_settings нет строки.
+# Существующие инсталляции работают без сида и без изменения поведения.
+AUTH_METHOD_DEFAULTS: dict[AuthMethod, dict] = {
+    AuthMethod.PASSWORD: {"enabled": True, "settings": {"allow_registration": True}},
+    AuthMethod.OTP: {"enabled": False, "settings": {}},
+    AuthMethod.TMA: {"enabled": True, "settings": {}},
+    AuthMethod.OAUTH: {"enabled": True, "settings": {}},
+}
 
 log = getLogger(__name__)
 
@@ -115,6 +124,52 @@ class App(BaseApp):
         )
 
     # =============================================================
+    # Способы входа (auth methods)
+    # =============================================================
+
+    async def get_auth_method_setting(self, method: AuthMethod) -> tuple[bool, dict]:
+        """
+        Эффективная конфигурация метода: дефолты из кода, поверх — строка из БД.
+        Возвращает (enabled, settings).
+        """
+        defaults = AUTH_METHOD_DEFAULTS[method]
+        rows = await self.dao.auth_methods.search(method=method, archived=False, limit=1)
+        if not rows:
+            return defaults["enabled"], dict(defaults["settings"])
+        row = rows[0]
+        return row.enabled, {**defaults["settings"], **(row.settings or {})}
+
+    async def ensure_auth_method_allowed(
+        self,
+        method: AuthMethod,
+        client_app_id: UUID | None = None,
+        provider: str | None = None,
+    ) -> dict:
+        """
+        Guard способа входа: метод включён глобально и разрешён приложению.
+        Админ-логин (login_by_admin) этот guard НЕ использует — чтобы нельзя было
+        отрезать себе доступ к админке, выключив пароль.
+
+        Возвращает эффективные settings метода.
+        """
+        enabled, settings = await self.get_auth_method_setting(method)
+        method_key = method.value.lower()
+        if not enabled:
+            raise ValueError(f"Auth method '{method_key}' is disabled")
+
+        if client_app_id:
+            client_app = await self.dao.client_apps.get_by_id(client_app_id)
+            allowed = client_app.allowed_auth_methods
+            if allowed:
+                keys = {method_key}
+                if provider:
+                    keys.add(f"{method_key}:{provider.lower()}")
+                if not keys & {a.lower() for a in allowed}:
+                    raise ValueError(f"Auth method '{method_key}' is not allowed for this application")
+
+        return settings
+
+    # =============================================================
     # Пароли
     # =============================================================
 
@@ -124,6 +179,10 @@ class App(BaseApp):
         identifier — email, phone, username и т.п.
         НЕ привязывает к существующим identities.
         """
+        settings = await self.ensure_auth_method_allowed(AuthMethod.PASSWORD)
+        if not settings.get("allow_registration", True):
+            raise ValueError("Registration is disabled")
+
         existing = await self.dao.credentials.search(
             identifier=identifier,
             type=CredentialType.PASSWORD,
@@ -215,6 +274,8 @@ class App(BaseApp):
             ip_address=ip_address,
             user_agent=user_agent,
         ) as logger:
+            await self.ensure_auth_method_allowed(AuthMethod.PASSWORD, client_app_id)
+
             credential = await self._verify_password_credential(identifier, password)
 
             session, tokens = await self.create_session(
@@ -233,22 +294,24 @@ class App(BaseApp):
     # OTP
     # =============================================================
 
-    async def send_otp(self, destination: str, channel: str) -> AuthOtpChallenge:
+    async def send_otp(self, destination: str, channel: str) -> AuthOtpChallenge:  # noqa: ARG002
         """
         1. Создаёт OTP challenge
         2. Генерирует код
         3. Сохраняет hash
         4. Отправляет через внешний сервис уведомлений
         """
+        await self.ensure_auth_method_allowed(AuthMethod.OTP)
         raise NotImplementedError()
 
-    async def login_by_otp(self, challenge_id: UUID, code: str) -> tuple[Session, tuple[str, str]]:
+    async def login_by_otp(self, challenge_id: UUID, code: str) -> tuple[Session, tuple[str, str]]:  # noqa: ARG002
         """
         1. Проверяет OTP challenge
         2. Находит или создаёт identity
         3. Создаёт OTP credential (если надо)
         4. Создаёт новую сессию
         """
+        await self.ensure_auth_method_allowed(AuthMethod.OTP)
         raise NotImplementedError()
 
     # =============================================================
@@ -342,20 +405,25 @@ class App(BaseApp):
         4. Если нет — создаёт identity + TMA credential
         5. Создаёт сессию
         """
-        if not cfg.auth.telegram_bot_token:
-            raise ValueError("Telegram bot token not configured")
-
         async with self.log_login_attempt(
             method="tma",
             identifier=None,
             ip_address=ip_address,
             user_agent=user_agent,
         ) as logger:
+            tma_settings = await self.ensure_auth_method_allowed(AuthMethod.TMA, client_app_id)
+
+            # Параметры из настроек метода (админка), fallback — env
+            bot_token = tma_settings.get("bot_token") or cfg.auth.telegram_bot_token
+            if not bot_token:
+                raise ValueError("Telegram bot token not configured")
+            max_age = tma_settings.get("auth_date_max_age") or cfg.auth.tma_auth_date_max_age
+
             # Верифицируем initData
             tma_data = self.verify_tma_init_data(
                 init_data,
-                cfg.auth.telegram_bot_token,
-                max_age=cfg.auth.tma_auth_date_max_age,
+                bot_token,
+                max_age=max_age,
             )
 
             telegram_id = tma_data["telegram_id"]
@@ -429,6 +497,8 @@ class App(BaseApp):
         """
         Возвращает URL для начала авторизации у провайдера.
         """
+        await self.ensure_auth_method_allowed(AuthMethod.OAUTH)
+
         # Получаем провайдера из БД
         oauth_providers = await self.dao.oauth_providers.search(
             name=provider,
@@ -484,6 +554,8 @@ class App(BaseApp):
             ip_address=ip_address,
             user_agent=user_agent,
         ) as logger:
+            await self.ensure_auth_method_allowed(AuthMethod.OAUTH, client_app_id, provider=provider)
+
             # Получаем провайдера из БД
             oauth_providers = await self.dao.oauth_providers.search(
                 name=provider,

@@ -52,3 +52,12 @@ class AdminRole(StrEnum):
 
     OWNER = "OWNER"
     ADMIN = "ADMIN"
+
+
+class AuthMethod(StrEnum):
+    __meta__ = meta
+
+    PASSWORD = "PASSWORD"  # noqa: S105
+    OTP = "OTP"
+    TMA = "TMA"
+    OAUTH = "OAUTH"
