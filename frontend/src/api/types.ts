@@ -43,33 +43,22 @@ export interface ClientApp {
   type: string | null;
   allowed_redirect_uris: string[] | null;
   allowed_scopes: string[] | null;
-  allowed_auth_methods: string[] | null;
   access_token_ttl_sec: number;
   refresh_token_ttl_sec: number;
   created?: string | null;
   archived?: boolean | null;
 }
 
-export interface AuthMethodConfig {
-  method: "PASSWORD" | "OTP" | "TMA" | "OAUTH";
-  enabled: boolean;
-  configured: boolean;
-  allow_registration: boolean | null;
-  bot_token_set: boolean;
-  env_bot_token_set: boolean;
-  auth_date_max_age: number | null;
-}
+export type ConnectorType = "PASSWORD" | "OTP" | "TMA" | "OAUTH";
 
-export interface OauthProvider {
+export interface Connector {
   id: UUID;
+  key: string;
+  type: ConnectorType;
   name: string;
-  client_id: string;
-  auth_url: string;
-  token_url: string;
-  jwks_url: string | null;
-  userinfo_url: string | null;
   enabled: boolean;
-  client_secret_set: boolean;
+  // секреты заменены флагами: bot_token_set / client_secret_set
+  settings: Record<string, unknown>;
   created?: string | null;
   archived?: boolean | null;
 }

@@ -61,39 +61,6 @@ async def test_client_apps_404(client, auth_headers):
     assert resp.status_code == 404
 
 
-async def test_oauth_provider_secret_masked(client, auth_headers):
-    resp = await client.post(
-        "/admin/oauth-providers",
-        json={
-            "name": "google",
-            "client_id": "cid",
-            "client_secret": "super-secret",
-            "auth_url": "https://accounts.google.com/o/oauth2/auth",
-            "token_url": "https://oauth2.googleapis.com/token",
-        },
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    provider_id = body["id"]
-    assert "client_secret" not in body
-    assert body["client_secret_set"] is True
-
-    # PATCH без client_secret не стирает секрет
-    resp = await client.patch(
-        f"/admin/oauth-providers/{provider_id}",
-        json={"enabled": False},
-        headers=auth_headers,
-    )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["enabled"] is False
-    assert resp.json()["client_secret_set"] is True
-
-    # list тоже маскирует
-    resp = await client.get("/admin/oauth-providers", headers=auth_headers)
-    assert all("client_secret" not in item for item in resp.json()["items"])
-
-
 async def test_identities_list_and_detail(client, app, auth_headers, owner):
     resp = await client.get("/admin/identities", headers=auth_headers)
     assert resp.status_code == 200

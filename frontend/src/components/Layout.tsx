@@ -4,9 +4,8 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 const NAV_ITEMS = [
-  { to: "/auth-methods", label: "Auth Methods" },
   { to: "/client-apps", label: "Client Apps" },
-  { to: "/oauth-providers", label: "OAuth Providers" },
+  { to: "/connectors", label: "Connectors" },
   { to: "/identities", label: "Identities" },
   { to: "/sessions", label: "Sessions" },
   { to: "/logins", label: "Login Audit" },

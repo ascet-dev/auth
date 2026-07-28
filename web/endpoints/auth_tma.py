@@ -31,6 +31,7 @@ class LoginByTMA(JsonEndpoint):
             session, tokens = await app.login_by_tma(
                 init_data=ctx.body.init_data,
                 client_app_id=ctx.body.client_app_id,
+                connector=ctx.body.connector,
                 ip_address=ip_address,
                 user_agent=user_agent,
             )

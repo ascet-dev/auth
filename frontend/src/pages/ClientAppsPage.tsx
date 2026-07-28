@@ -4,6 +4,7 @@ import {
   Code,
   Group,
   Modal,
+  MultiSelect,
   NumberInput,
   Stack,
   Switch,
@@ -16,7 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { api, qs } from "../api/client";
-import type { ClientApp, Paginated } from "../api/types";
+import type { ClientApp, Connector, Paginated } from "../api/types";
 import { DataTable, formatDate, shortId } from "../components/DataTable";
 import type { Column } from "../components/DataTable";
 
@@ -28,7 +29,7 @@ interface FormState {
   name: string;
   allowed_redirect_uris: string[];
   allowed_scopes: string[];
-  allowed_auth_methods: string[];
+  connector_ids: string[];
   access_token_ttl_sec: number;
   refresh_token_ttl_sec: number;
 }
@@ -38,12 +39,10 @@ const EMPTY_FORM: FormState = {
   name: "",
   allowed_redirect_uris: [],
   allowed_scopes: [],
-  allowed_auth_methods: [],
+  connector_ids: [],
   access_token_ttl_sec: 900,
   refresh_token_ttl_sec: 2592000,
 };
-
-const AUTH_METHOD_SUGGESTIONS = ["password", "tma", "otp", "oauth"];
 
 export function ClientAppsPage() {
   const queryClient = useQueryClient();
@@ -59,17 +58,43 @@ export function ClientAppsPage() {
       ),
   });
 
+  const connectorsQuery = useQuery({
+    queryKey: ["connectors", "all"],
+    queryFn: () => api<Paginated<Connector>>(`/admin/connectors${qs({ limit: 200 })}`),
+  });
+
+  const connectorOptions = (connectorsQuery.data?.items ?? []).map((c) => ({
+    value: c.id,
+    label: `${c.key} (${c.type})`,
+  }));
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["client-apps"] });
+
+  const openEdit = async (row: ClientApp) => {
+    const mapped = await api<Connector[]>(`/admin/client-apps/${row.id}/connectors`);
+    setForm({
+      id: row.id,
+      key: row.key,
+      name: row.name,
+      allowed_redirect_uris: row.allowed_redirect_uris ?? [],
+      allowed_scopes: row.allowed_scopes ?? [],
+      connector_ids: mapped.map((c) => c.id),
+      access_token_ttl_sec: row.access_token_ttl_sec,
+      refresh_token_ttl_sec: row.refresh_token_ttl_sec,
+    });
+  };
 
   const save = useMutation({
     mutationFn: async (state: FormState) => {
-      const { id, key, allowed_auth_methods, ...rest } = state;
-      // пустой список = все методы (в API это null)
-      const payload = { ...rest, allowed_auth_methods: allowed_auth_methods.length ? allowed_auth_methods : null };
-      if (id) {
-        return api(`/admin/client-apps/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-      }
-      return api("/admin/client-apps", { method: "POST", body: JSON.stringify({ key, ...payload }) });
+      const { id, key, connector_ids, ...rest } = state;
+      const saved = id
+        ? await api<ClientApp>(`/admin/client-apps/${id}`, { method: "PATCH", body: JSON.stringify(rest) })
+        : await api<ClientApp>("/admin/client-apps", { method: "POST", body: JSON.stringify({ key, ...rest }) });
+      await api(`/admin/client-apps/${saved.id}/connectors`, {
+        method: "PUT",
+        body: JSON.stringify({ connector_ids }),
+      });
+      return saved;
     },
     onSuccess: () => {
       setForm(null);
@@ -106,22 +131,7 @@ export function ClientAppsPage() {
             </Badge>
           ) : (
             <>
-              <Button
-                size="compact-xs"
-                variant="default"
-                onClick={() =>
-                  setForm({
-                    id: row.id,
-                    key: row.key,
-                    name: row.name,
-                    allowed_redirect_uris: row.allowed_redirect_uris ?? [],
-                    allowed_scopes: row.allowed_scopes ?? [],
-                    allowed_auth_methods: row.allowed_auth_methods ?? [],
-                    access_token_ttl_sec: row.access_token_ttl_sec,
-                    refresh_token_ttl_sec: row.refresh_token_ttl_sec,
-                  })
-                }
-              >
+              <Button size="compact-xs" variant="default" onClick={() => void openEdit(row)}>
                 Edit
               </Button>
               <Button
@@ -197,12 +207,13 @@ export function ClientAppsPage() {
               value={form.allowed_scopes}
               onChange={(value) => setForm({ ...form, allowed_scopes: value })}
             />
-            <TagsInput
-              label="Allowed auth methods"
-              description="Пусто = все включённые глобально. Значения: password, tma, otp, oauth или oauth:<provider>"
-              data={AUTH_METHOD_SUGGESTIONS}
-              value={form.allowed_auth_methods}
-              onChange={(value) => setForm({ ...form, allowed_auth_methods: value })}
+            <MultiSelect
+              label="Connectors"
+              description="Способы входа приложения. Пусто = все включённые коннекторы"
+              data={connectorOptions}
+              value={form.connector_ids}
+              onChange={(value) => setForm({ ...form, connector_ids: value })}
+              searchable
             />
             <NumberInput
               label="Access token TTL, sec"

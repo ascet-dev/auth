@@ -66,12 +66,14 @@ class WebApp(Web):
         Route("GET", "/admin/client-apps/{id}", ea.AdminGetClientApp),
         Route("PATCH", "/admin/client-apps/{id}", ea.AdminUpdateClientApp),
         Route("DELETE", "/admin/client-apps/{id}", ea.AdminArchiveClientApp),
-        # admin: oauth providers
-        Route("GET", "/admin/oauth-providers", ea.AdminListOauthProviders),
-        Route("POST", "/admin/oauth-providers", ea.AdminCreateOauthProvider),
-        Route("GET", "/admin/oauth-providers/{id}", ea.AdminGetOauthProvider),
-        Route("PATCH", "/admin/oauth-providers/{id}", ea.AdminUpdateOauthProvider),
-        Route("DELETE", "/admin/oauth-providers/{id}", ea.AdminArchiveOauthProvider),
+        # admin: connectors (экземпляры способов входа)
+        Route("GET", "/admin/connectors", ea.AdminListConnectors),
+        Route("POST", "/admin/connectors", ea.AdminCreateConnector),
+        Route("GET", "/admin/connectors/{id}", ea.AdminGetConnector),
+        Route("PATCH", "/admin/connectors/{id}", ea.AdminUpdateConnector),
+        Route("DELETE", "/admin/connectors/{id}", ea.AdminArchiveConnector),
+        Route("GET", "/admin/client-apps/{id}/connectors", ea.AdminGetClientAppConnectors),
+        Route("PUT", "/admin/client-apps/{id}/connectors", ea.AdminSetClientAppConnectors),
         # admin: identities (read-only)
         Route("GET", "/admin/identities", ea.AdminListIdentities),
         Route("GET", "/admin/identities/{id}", ea.AdminGetIdentity),
@@ -84,9 +86,6 @@ class WebApp(Web):
         Route("GET", "/admin/grants", ea.AdminListGrants),
         Route("POST", "/admin/grants", ea.AdminCreateGrant),
         Route("DELETE", "/admin/grants/{id}", ea.AdminRevokeGrant),
-        # admin: auth methods
-        Route("GET", "/admin/auth-methods", ea.AdminListAuthMethods),
-        Route("PATCH", "/admin/auth-methods/{method}", ea.AdminUpdateAuthMethod),
     ]
 
 

@@ -6,6 +6,8 @@ from pydantic import BaseModel as PydanticBaseModel
 class RegisterPasswordRequest(PydanticBaseModel):
     login: str
     password: str
+    # Опционально: политика регистрации берётся из password-коннектора приложения
+    client_app_id: UUID | None = None
 
 
 class LoginByPasswordRequest(PydanticBaseModel):
@@ -52,6 +54,8 @@ class LoginByOAuthRequest(PydanticBaseModel):
 class LoginByTMARequest(PydanticBaseModel):
     init_data: str
     client_app_id: UUID
+    # key TMA-коннектора; обязателен, если приложению доступно несколько ботов
+    connector: str | None = None
 
 
 class RevokedSessionsResponse(PydanticBaseModel):

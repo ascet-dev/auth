@@ -24,6 +24,7 @@ class RegisterPassword(JsonEndpoint):
             identity = await app.register_password_identity(
                 identifier=ctx.body.login,
                 password=ctx.body.password,
+                client_app_id=ctx.body.client_app_id,
             )
         except ValueError as e:
             raise BadRequest(message=str(e)) from e

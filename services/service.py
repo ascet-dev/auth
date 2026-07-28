@@ -19,6 +19,7 @@ from jose.jwt import decode as jwt_decode
 
 from models.admin_grant import AuthAdminGrant  # noqa: TC001
 from models.client_app import ClientApp  # noqa: TC001
+from models.connector import AuthConnector  # noqa: TC001
 from models.credential import Credential  # noqa: TC001
 from models.enums import AdminRole, AuthClientType, AuthMethod, CredentialType, IdentityStatus, SessionStatus
 from models.identity import AuthIdentity  # noqa: TC001
@@ -45,13 +46,18 @@ HTTP_OK = 200
 AUTH_ADMIN_CLIENT_KEY = "auth-admin"
 AUTH_ADMIN_REFRESH_TTL_SEC = 60 * 60 * 24 * 7  # 7 дней
 
-# Дефолты способов входа: применяются, пока в auth_method_settings нет строки.
-# Существующие инсталляции работают без сида и без изменения поведения.
-AUTH_METHOD_DEFAULTS: dict[AuthMethod, dict] = {
-    AuthMethod.PASSWORD: {"enabled": True, "settings": {"allow_registration": True}},
-    AuthMethod.OTP: {"enabled": False, "settings": {}},
-    AuthMethod.TMA: {"enabled": True, "settings": {}},
-    AuthMethod.OAUTH: {"enabled": True, "settings": {}},
+# Дефолтные настройки по типу коннектора: подмешиваются под settings коннектора.
+# Если коннекторов типа нет вообще — PASSWORD/TMA работают на встроенных дефолтах
+# (TMA — при заданном env-токене), существующие инсталляции ничего не настраивают.
+CONNECTOR_DEFAULTS: dict[AuthMethod, dict] = {
+    AuthMethod.PASSWORD: {
+        "max_failed_attempts": MAX_FAILED_ATTEMPTS,
+        "lockout_minutes": LOCKOUT_DURATION_MINUTES,
+        "allow_registration": True,
+    },
+    AuthMethod.OTP: {},
+    AuthMethod.TMA: {},
+    AuthMethod.OAUTH: {},
 }
 
 log = getLogger(__name__)
@@ -124,63 +130,91 @@ class App(BaseApp):
         )
 
     # =============================================================
-    # Способы входа (auth methods)
+    # Коннекторы (экземпляры способов входа)
     # =============================================================
 
-    async def get_auth_method_setting(self, method: AuthMethod) -> tuple[bool, dict]:
-        """
-        Эффективная конфигурация метода: дефолты из кода, поверх — строка из БД.
-        Возвращает (enabled, settings).
-        """
-        defaults = AUTH_METHOD_DEFAULTS[method]
-        rows = await self.dao.auth_methods.search(method=method, archived=False, limit=1)
-        if not rows:
-            return defaults["enabled"], dict(defaults["settings"])
-        row = rows[0]
-        return row.enabled, {**defaults["settings"], **(row.settings or {})}
+    async def list_app_connector_ids(self, client_app_id: UUID) -> set[UUID] | None:
+        """ID коннекторов, привязанных к приложению. None = привязок нет (все разрешены)."""
+        links = await self.dao.client_app_connectors.search(client_app_id=client_app_id, archived=False)
+        return {link.connector_id for link in links} if links else None
 
-    async def ensure_auth_method_allowed(
+    async def resolve_auth_connector(
         self,
         method: AuthMethod,
         client_app_id: UUID | None = None,
-        provider: str | None = None,
-    ) -> dict:
+        key: str | None = None,
+    ) -> tuple[str, dict]:
         """
-        Guard способа входа: метод включён глобально и разрешён приложению.
-        Админ-логин (login_by_admin) этот guard НЕ использует — чтобы нельзя было
-        отрезать себе доступ к админке, выключив пароль.
+        Резолвит коннектор для login-флоу: тип + приложение (+ явный key от клиента).
+        Возвращает (connector_key, effective_settings).
 
-        Возвращает эффективные settings метода.
+        Правила:
+        - привязки приложения (M2M) — whitelist; нет привязок = все включённые;
+        - key задан → берём его из доступных;
+        - ровно один доступный → он; несколько → нужен явный key;
+        - коннекторов типа нет вообще и whitelist не задан → встроенный дефолт
+          (PASSWORD: политика из констант; TMA: env bot token).
+
+        Админ-логин (login_by_admin) резолвер НЕ использует — чтобы нельзя было
+        отрезать себе доступ к админке, выключив пароль.
         """
-        enabled, settings = await self.get_auth_method_setting(method)
         method_key = method.value.lower()
-        if not enabled:
+        all_of_type: list[AuthConnector] = await self.dao.connectors.search(type=method, archived=False)
+        enabled_of_type = [c for c in all_of_type if c.enabled]
+
+        whitelist: set[UUID] | None = None
+        if client_app_id:
+            whitelist = await self.list_app_connector_ids(client_app_id)
+
+        allowed = enabled_of_type if whitelist is None else [c for c in enabled_of_type if c.id in whitelist]
+
+        def effective(connector: AuthConnector) -> tuple[str, dict]:
+            return connector.key, {**CONNECTOR_DEFAULTS[method], **(connector.settings or {})}
+
+        if key:
+            for connector in allowed:
+                if connector.key == key:
+                    return effective(connector)
+            raise ValueError(f"Auth connector '{key}' is not available for this application")
+
+        if len(allowed) == 1:
+            return effective(allowed[0])
+        if len(allowed) > 1:
+            raise ValueError(f"Multiple '{method_key}' connectors available, specify connector")
+
+        # доступных нет
+        if whitelist is not None:
+            raise ValueError(f"Auth method '{method_key}' is not allowed for this application")
+        if all_of_type:
             raise ValueError(f"Auth method '{method_key}' is disabled")
 
-        if client_app_id:
-            client_app = await self.dao.client_apps.get_by_id(client_app_id)
-            allowed = client_app.allowed_auth_methods
-            if allowed:
-                keys = {method_key}
-                if provider:
-                    keys.add(f"{method_key}:{provider.lower()}")
-                if not keys & {a.lower() for a in allowed}:
-                    raise ValueError(f"Auth method '{method_key}' is not allowed for this application")
-
-        return settings
+        # коннекторов типа не существует → встроенные дефолты
+        if method == AuthMethod.PASSWORD:
+            return "password", dict(CONNECTOR_DEFAULTS[AuthMethod.PASSWORD])
+        if method == AuthMethod.TMA and cfg.auth.telegram_bot_token:
+            return "tma", {
+                "bot_token": cfg.auth.telegram_bot_token,
+                "auth_date_max_age": cfg.auth.tma_auth_date_max_age,
+            }
+        raise ValueError(f"Auth method '{method_key}' is not configured")
 
     # =============================================================
     # Пароли
     # =============================================================
 
-    async def register_password_identity(self, identifier: str, password: str) -> AuthIdentity:
+    async def register_password_identity(
+        self,
+        identifier: str,
+        password: str,
+        client_app_id: UUID | None = None,
+    ) -> AuthIdentity:
         """
         Создаёт новую identity + password credential.
         identifier — email, phone, username и т.п.
         НЕ привязывает к существующим identities.
         """
-        settings = await self.ensure_auth_method_allowed(AuthMethod.PASSWORD)
-        if not settings.get("allow_registration", True):
+        _, policy = await self.resolve_auth_connector(AuthMethod.PASSWORD, client_app_id)
+        if not policy.get("allow_registration", True):
             raise ValueError("Registration is disabled")
 
         existing = await self.dao.credentials.search(
@@ -207,10 +241,18 @@ class App(BaseApp):
 
         return identity
 
-    async def _verify_password_credential(self, identifier: str, password: str) -> Credential:
+    async def _verify_password_credential(
+        self,
+        identifier: str,
+        password: str,
+        *,
+        max_failed_attempts: int = MAX_FAILED_ATTEMPTS,
+        lockout_minutes: int = LOCKOUT_DURATION_MINUTES,
+    ) -> Credential:
         """
         Находит password credential по identifier и проверяет пароль:
         lockout, счётчики неудачных попыток, сброс счётчиков при успехе.
+        Политика (лимиты) приходит из password-коннектора приложения.
         """
         now = datetime.datetime.now(datetime.UTC)
 
@@ -233,8 +275,8 @@ class App(BaseApp):
             credential.secret_hash,
         ):
             credential.failed_attempts += 1
-            if credential.failed_attempts >= MAX_FAILED_ATTEMPTS:
-                credential.locked_until = now + datetime.timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+            if credential.failed_attempts >= max_failed_attempts:
+                credential.locked_until = now + datetime.timedelta(minutes=lockout_minutes)
             await self.dao.credentials.update_by_id(
                 credential.id,
                 failed_attempts=credential.failed_attempts,
@@ -274,9 +316,14 @@ class App(BaseApp):
             ip_address=ip_address,
             user_agent=user_agent,
         ) as logger:
-            await self.ensure_auth_method_allowed(AuthMethod.PASSWORD, client_app_id)
+            _, policy = await self.resolve_auth_connector(AuthMethod.PASSWORD, client_app_id)
 
-            credential = await self._verify_password_credential(identifier, password)
+            credential = await self._verify_password_credential(
+                identifier,
+                password,
+                max_failed_attempts=policy["max_failed_attempts"],
+                lockout_minutes=policy["lockout_minutes"],
+            )
 
             session, tokens = await self.create_session(
                 credential.identity_id,
@@ -301,7 +348,7 @@ class App(BaseApp):
         3. Сохраняет hash
         4. Отправляет через внешний сервис уведомлений
         """
-        await self.ensure_auth_method_allowed(AuthMethod.OTP)
+        await self.resolve_auth_connector(AuthMethod.OTP)
         raise NotImplementedError()
 
     async def login_by_otp(self, challenge_id: UUID, code: str) -> tuple[Session, tuple[str, str]]:  # noqa: ARG002
@@ -311,7 +358,7 @@ class App(BaseApp):
         3. Создаёт OTP credential (если надо)
         4. Создаёт новую сессию
         """
-        await self.ensure_auth_method_allowed(AuthMethod.OTP)
+        await self.resolve_auth_connector(AuthMethod.OTP)
         raise NotImplementedError()
 
     # =============================================================
@@ -393,28 +440,33 @@ class App(BaseApp):
         init_data: str,
         client_app_id: UUID,
         *,
+        connector: str | None = None,
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> tuple[Session, tuple[str, str]]:
         """
         Аутентификация через Telegram Mini App initData.
 
-        1. Верифицирует HMAC-подпись initData ботовым токеном
-        2. Извлекает telegram_id
-        3. Ищет credential по (type=TMA, external_subject_id=telegram_id)
-        4. Если нет — создаёт identity + TMA credential
+        1. Резолвит TMA-коннектор приложения (несколько ботов → явный `connector`)
+        2. Верифицирует HMAC-подпись initData токеном бота коннектора
+        3. Ищет credential по (type=TMA, external_subject_id=telegram_id) —
+           telegram_id глобален, один юзер = одна identity через любых ботов
+        4. Если нет — создаёт identity + TMA credential (connector_key в provider)
         5. Создаёт сессию
         """
         async with self.log_login_attempt(
             method="tma",
-            identifier=None,
+            identifier=connector,
             ip_address=ip_address,
             user_agent=user_agent,
         ) as logger:
-            tma_settings = await self.ensure_auth_method_allowed(AuthMethod.TMA, client_app_id)
+            connector_key, tma_settings = await self.resolve_auth_connector(
+                AuthMethod.TMA,
+                client_app_id,
+                key=connector,
+            )
 
-            # Параметры из настроек метода (админка), fallback — env
-            bot_token = tma_settings.get("bot_token") or cfg.auth.telegram_bot_token
+            bot_token = tma_settings.get("bot_token")
             if not bot_token:
                 raise ValueError("Telegram bot token not configured")
             max_age = tma_settings.get("auth_date_max_age") or cfg.auth.tma_auth_date_max_age
@@ -442,10 +494,11 @@ class App(BaseApp):
                 credential = credentials[0]
                 identity_id = credential.identity_id
 
-                # Обновляем meta и last_used
+                # Обновляем meta и last_used (+ последний использованный коннектор)
                 await self.dao.credentials.update_by_id(
                     credential.id,
                     last_used=now,
+                    provider=connector_key,
                     meta={
                         "first_name": tma_data.get("first_name"),
                         "last_name": tma_data.get("last_name"),
@@ -461,11 +514,12 @@ class App(BaseApp):
                 )
                 identity_id = identity.id
 
-                # Создаём TMA credential
+                # Создаём TMA credential (provider = коннектор, для аудита/будущей изоляции)
                 credential = await self.dao.credentials.create(
                     identity_id=identity_id,
                     type=CredentialType.TMA,
                     identifier=tma_data.get("username"),
+                    provider=connector_key,
                     external_subject_id=telegram_id,
                     failed_attempts=0,
                     meta={
@@ -496,28 +550,16 @@ class App(BaseApp):
     async def start_oauth_flow(self, provider: str, redirect_uri: str) -> str:
         """
         Возвращает URL для начала авторизации у провайдера.
+        `provider` — key OAUTH-коннектора.
         """
-        await self.ensure_auth_method_allowed(AuthMethod.OAUTH)
-
-        # Получаем провайдера из БД
-        oauth_providers = await self.dao.oauth_providers.search(
-            name=provider,
-            enabled=True,
-            archived=False,
-            limit=1,
-        )
-
-        if not oauth_providers:
-            raise ValueError(f"OAuth provider '{provider}' not found or disabled")
-
-        oauth_provider = oauth_providers[0]
+        _, oauth_cfg = await self.resolve_auth_connector(AuthMethod.OAUTH, key=provider)
 
         # Генерируем state для защиты от CSRF
         state = secrets.token_urlsafe(32)
 
         # Формируем параметры для OAuth URL
         params = {
-            "client_id": oauth_provider.client_id,
+            "client_id": oauth_cfg.get("client_id"),
             "redirect_uri": redirect_uri,
             "response_type": "code",
             "state": state,
@@ -525,7 +567,7 @@ class App(BaseApp):
         }
 
         # Формируем URL
-        auth_url = oauth_provider.auth_url
+        auth_url = oauth_cfg.get("auth_url", "")
         url = f"{auth_url}&{urlencode(params)}" if "?" in auth_url else f"{auth_url}?{urlencode(params)}"
 
         return url
@@ -554,20 +596,11 @@ class App(BaseApp):
             ip_address=ip_address,
             user_agent=user_agent,
         ) as logger:
-            await self.ensure_auth_method_allowed(AuthMethod.OAUTH, client_app_id, provider=provider)
-
-            # Получаем провайдера из БД
-            oauth_providers = await self.dao.oauth_providers.search(
-                name=provider,
-                enabled=True,
-                archived=False,
-                limit=1,
+            connector_key, oauth_cfg = await self.resolve_auth_connector(
+                AuthMethod.OAUTH,
+                client_app_id,
+                key=provider,
             )
-
-            if not oauth_providers:
-                raise ValueError(f"OAuth provider '{provider}' not found or disabled")
-
-            oauth_provider = oauth_providers[0]
 
             # Обмениваем code на токен
             async with aiohttp.ClientSession() as http_session:
@@ -575,12 +608,12 @@ class App(BaseApp):
                     "grant_type": "authorization_code",
                     "code": code,
                     "redirect_uri": redirect_uri,
-                    "client_id": oauth_provider.client_id,
-                    "client_secret": oauth_provider.client_secret,
+                    "client_id": oauth_cfg.get("client_id"),
+                    "client_secret": oauth_cfg.get("client_secret"),
                 }
 
                 async with http_session.post(
-                    oauth_provider.token_url,
+                    oauth_cfg.get("token_url", ""),
                     data=token_data,
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                 ) as resp:
@@ -601,14 +634,9 @@ class App(BaseApp):
             # Если есть id_token, декодируем его
             if id_token:
                 try:
-                    # Если есть JWKS URL, валидируем через JWKS
-                    if oauth_provider.jwks_url:
-                        # Для упрощения декодируем без валидации подписи (в продакшене нужна валидация)
-                        # В реальном приложении нужно использовать jose.jwt.get_unverified_header
-                        # и jose.jwt.get_unverified_claims для получения claims
-                        decoded = jwt_decode(id_token, options={"verify_signature": False})
-                    else:
-                        decoded = jwt_decode(id_token, options={"verify_signature": False})
+                    # Для упрощения декодируем без валидации подписи
+                    # (в продакшене нужна валидация через jwks_url из настроек коннектора)
+                    decoded = jwt_decode(id_token, options={"verify_signature": False})
 
                     external_subject_id = decoded.get("sub") or decoded.get("user_id") or decoded.get("id")
                     user_email = decoded.get("email")
@@ -619,11 +647,11 @@ class App(BaseApp):
                     log.exception("Failed to decode OAuth id_token")
 
             # Если нет external_subject_id из id_token, получаем через userinfo
-            if not external_subject_id and oauth_provider.userinfo_url and access_token:
+            if not external_subject_id and oauth_cfg.get("userinfo_url") and access_token:
                 async with (
                     aiohttp.ClientSession() as http_session,
                     http_session.get(
-                        oauth_provider.userinfo_url,
+                        oauth_cfg["userinfo_url"],
                         headers={"Authorization": f"Bearer {access_token}"},
                     ) as resp,
                 ):
@@ -636,9 +664,9 @@ class App(BaseApp):
             if not external_subject_id:
                 raise ValueError("Could not extract user ID from OAuth provider response")
 
-            # Ищем существующий credential
+            # Ищем существующий credential (provider = key коннектора)
             credentials = await self.dao.credentials.search(
-                provider=provider,
+                provider=connector_key,
                 external_subject_id=external_subject_id,
                 type=CredentialType.OAUTH,
                 archived=False,
@@ -669,7 +697,7 @@ class App(BaseApp):
                 credential = await self.dao.credentials.create(
                     identity_id=identity_id,
                     type=CredentialType.OAUTH,
-                    provider=provider,
+                    provider=connector_key,
                     external_subject_id=external_subject_id,
                     identifier=user_email,
                     meta={
