@@ -84,6 +84,9 @@ class WebApp(Web):
         Route("GET", "/admin/grants", ea.AdminListGrants),
         Route("POST", "/admin/grants", ea.AdminCreateGrant),
         Route("DELETE", "/admin/grants/{id}", ea.AdminRevokeGrant),
+        # admin: auth methods
+        Route("GET", "/admin/auth-methods", ea.AdminListAuthMethods),
+        Route("PATCH", "/admin/auth-methods/{method}", ea.AdminUpdateAuthMethod),
     ]
 
 

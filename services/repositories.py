@@ -2,6 +2,7 @@ from adc_aiopg.repository import PGDataAccessObject, PostgresAccessLayer, TableD
 
 import models as m
 from models.admin_grant import AuthAdminGrant
+from models.auth_method import AuthMethodSetting
 from models.client_app import ClientApp
 from models.credential import Credential
 from models.identity import AuthIdentity
@@ -24,3 +25,4 @@ class DAO(PostgresAccessLayer, metadata=m.base.meta):  # type: ignore[call-arg, 
     )
     logins = TableDescriptor(PGDataAccessObject.from_model(Login, "auth_logins"))
     admin_grants = TableDescriptor(PGDataAccessObject.from_model(AuthAdminGrant, "auth_admin_grants"))
+    auth_methods = TableDescriptor(PGDataAccessObject.from_model(AuthMethodSetting, "auth_method_settings"))

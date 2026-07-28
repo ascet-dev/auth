@@ -1,3 +1,4 @@
+from .auth_methods import AdminListAuthMethods, AdminUpdateAuthMethod
 from .client_apps import (
     AdminArchiveClientApp,
     AdminCreateClientApp,
@@ -19,6 +20,8 @@ from .sessions import AdminListSessions, AdminRevokeSession
 
 __all__ = [
     "AdminArchiveClientApp",
+    "AdminListAuthMethods",
+    "AdminUpdateAuthMethod",
     "AdminArchiveOauthProvider",
     "AdminCreateClientApp",
     "AdminCreateGrant",

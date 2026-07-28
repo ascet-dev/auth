@@ -7,7 +7,7 @@ from adc_aiopg.types import Base
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
 
-from models.enums import AdminRole, AuthClientType, CredentialType, IdentityStatus, SessionStatus
+from models.enums import AdminRole, AuthClientType, AuthMethod, CredentialType, IdentityStatus, SessionStatus
 
 # ---------------------------------------------------------------- запросы
 
@@ -78,6 +78,7 @@ class ClientAppRead(BaseRead):
     type: AuthClientType | None = None
     allowed_redirect_uris: list[str] | None = None
     allowed_scopes: list[str] | None = None
+    allowed_auth_methods: list[str] | None = None
     access_token_ttl_sec: int
     refresh_token_ttl_sec: int
 
@@ -157,6 +158,9 @@ class ClientAppCreate(PydanticBaseModel):
     type: AuthClientType = AuthClientType.PUBLIC
     allowed_redirect_uris: list[str] = []
     allowed_scopes: list[str] = []
+    # None/пусто = все включённые глобально методы; иначе whitelist
+    # ("password", "tma", "otp", "oauth" или "oauth:<provider>")
+    allowed_auth_methods: list[str] | None = None
     access_token_ttl_sec: int = 900
     refresh_token_ttl_sec: int = 60 * 60 * 24 * 30
 
@@ -167,6 +171,7 @@ class ClientAppUpdate(PydanticBaseModel):
     type: AuthClientType | None = None
     allowed_redirect_uris: list[str] | None = None
     allowed_scopes: list[str] | None = None
+    allowed_auth_methods: list[str] | None = None
     access_token_ttl_sec: int | None = None
     refresh_token_ttl_sec: int | None = None
 
@@ -197,3 +202,31 @@ class OauthProviderUpdate(PydanticBaseModel):
 class GrantCreate(PydanticBaseModel):
     identity_id: UUID
     role: AdminRole = AdminRole.ADMIN
+
+
+# ---------------------------------------------------------------- способы входа
+
+
+class ByMethodPath(PydanticBaseModel):
+    method: AuthMethod
+
+
+class AuthMethodRead(Base):
+    method: AuthMethod
+    enabled: bool
+    configured: bool = False  # есть ли строка в БД (false = дефолты из кода)
+    # PASSWORD
+    allow_registration: bool | None = None
+    # TMA (bot_token write-only: наружу — только факт наличия)
+    bot_token_set: bool = False
+    env_bot_token_set: bool = False
+    auth_date_max_age: int | None = None
+
+
+class AuthMethodUpdate(PydanticBaseModel):
+    enabled: bool | None = None
+    # PASSWORD
+    allow_registration: bool | None = None
+    # TMA: None = не менять, пустая строка = очистить (fallback на env)
+    bot_token: str | None = None
+    auth_date_max_age: int | None = None

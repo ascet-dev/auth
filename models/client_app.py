@@ -23,5 +23,12 @@ class ClientApp(BaseModel):
         sa_column=Column(ARRAY(String)),
     )
 
+    # Whitelist способов входа для приложения: "password", "otp", "tma",
+    # "oauth" или гранулярно "oauth:google". NULL/пусто = все включённые глобально.
+    allowed_auth_methods: list[str] | None = Field(
+        default=None,
+        sa_column=Column(ARRAY(String)),
+    )
+
     access_token_ttl_sec: int = Field(default=900)
     refresh_token_ttl_sec: int = Field(default=60 * 60 * 24 * 30)  # 30 дней

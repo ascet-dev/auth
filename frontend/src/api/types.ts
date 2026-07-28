@@ -43,10 +43,21 @@ export interface ClientApp {
   type: string | null;
   allowed_redirect_uris: string[] | null;
   allowed_scopes: string[] | null;
+  allowed_auth_methods: string[] | null;
   access_token_ttl_sec: number;
   refresh_token_ttl_sec: number;
   created?: string | null;
   archived?: boolean | null;
+}
+
+export interface AuthMethodConfig {
+  method: "PASSWORD" | "OTP" | "TMA" | "OAUTH";
+  enabled: boolean;
+  configured: boolean;
+  allow_registration: boolean | null;
+  bot_token_set: boolean;
+  env_bot_token_set: boolean;
+  auth_date_max_age: number | null;
 }
 
 export interface OauthProvider {
