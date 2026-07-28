@@ -259,9 +259,21 @@ update-hooks: ## Update pre-commit hooks
 #                        Development Workflow                                 #
 #=============================================================================#
 
+keys: ## Generate JWT keypair into secrets/ (skips if it already exists)
+	@if [ -f secrets/jwt_private.pem ]; then \
+		echo "secrets/jwt_private.pem exists, skipping."; \
+	else \
+		mkdir -p secrets && \
+		openssl genrsa -out secrets/jwt_private.pem 2048 2>/dev/null && \
+		openssl rsa -in secrets/jwt_private.pem -pubout -out secrets/jwt_public.pem 2>/dev/null && \
+		chmod 600 secrets/jwt_private.pem && \
+		echo "JWT keypair created in secrets/ (gitignored)."; \
+	fi
+
 init: ## Turnkey: full stack in docker (build SPA + backend, migrate, bootstrap owner)
 	@echo "🚀 Initializing project (full docker)..."
 	@$(MAKE) env-example
+	@$(MAKE) keys
 	docker compose up -d --build --wait backend
 	@echo ""
 	@echo "✅ Auth service is up:"

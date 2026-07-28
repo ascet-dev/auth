@@ -68,3 +68,6 @@ test_*
 # Development
 Makefile
 .pre-commit-config.yaml
+
+# Secrets are mounted, never baked into the image
+secrets/

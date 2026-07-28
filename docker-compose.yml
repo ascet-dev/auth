@@ -81,6 +81,11 @@ services:
       APP__PORT: 8001
       PG__CONNECTION__DSN: postgresql://postgres:postgres@postgres:5432/auth
       S3__CONNECTION__URL: "http://minio:9000"
+      # Ключи генерирует `make keys` в ./secrets (в образ не попадают)
+      AUTH__PRIVATE_KEY_PATH: /app/secrets/jwt_private.pem
+      AUTH__PUBLIC_KEY_PATH: /app/secrets/jwt_public.pem
+    volumes:
+      - ./secrets:/app/secrets:ro
     command: python manage.py start-web
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/liveness"]

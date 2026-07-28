@@ -1,5 +1,7 @@
 from datetime import timedelta
+from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -18,8 +20,14 @@ class Auth(BaseSettings):
     owner_login: str = "admin"
     owner_password: str | None = None
 
+    # Ключи можно передать файлами (удобнее многострочных env): PEM читается при старте
+    private_key_path: Path | None = None
+    public_key_path: Path | None = None
+
     # TEST/DEVELOPMENT KEYS ONLY - DO NOT USE IN PRODUCTION!
-    # In production, load keys from environment variables
+    # Эти ключи лежат в публичном репозитории: подписав ими токен, кто угодно
+    # получит и админский доступ. Вне LOCAL/TEST старт с ними блокируется
+    # (см. uses_dev_keys и проверку в manage.py start-web).
     public_key: str = """-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtD/nFYH4CXN7Jy7zudpb
 Wj+pghUczDQCX8rFMJDfWxyWlTy5Vc9/4/uNvOzMHzOJNix1Av08cvAkHkeLF3AK
@@ -60,3 +68,19 @@ JznMexvoqPBcexlDthimp/fZGx8NrqhvQnOeWiePCdUMRkkp/1c0zvPh9zZ+NCir
 uF2ndSF/IXss+GMHYPwu3OgTD2NRGuVR+5LjiQPRnx861/djZbvh2ok=
 -----END RSA PRIVATE KEY-----
 """
+
+    @model_validator(mode="after")
+    def _load_keys_from_files(self) -> "Auth":
+        """PEM из файлов приоритетнее: многострочные env неудобны и в compose, и в k8s."""
+        if self.private_key_path:
+            self.private_key = self.private_key_path.read_text(encoding="utf-8")
+        if self.public_key_path:
+            self.public_key = self.public_key_path.read_text(encoding="utf-8")
+        return self
+
+    @property
+    def uses_dev_keys(self) -> bool:
+        """Работаем на ключах из репозитория (подпись токенов публично воспроизводима)."""
+        dev_public = type(self).model_fields["public_key"].default
+        dev_private = type(self).model_fields["private_key"].default
+        return self.public_key.strip() == dev_public.strip() or self.private_key.strip() == dev_private.strip()

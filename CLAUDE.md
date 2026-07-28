@@ -163,7 +163,11 @@ async with self.log_login_attempt(method="tma", identifier=None, ip_address=ip, 
   (роли `OWNER`/`ADMIN`; partial unique index: один активный грант на identity)
 - Сессии — в общей таблице, но под системным client_app `auth-admin` (создаётся bootstrap-ом)
 - Bootstrap: `python manage.py bootstrap-owner` (идемпотентно; вне LOCAL пароль обязателен —
-  `AUTH__OWNER_PASSWORD`). При старте web без OWNER-а — ERROR в лог, старт не блокируется
+  `AUTH__OWNER_PASSWORD`). Если логин уже занят — отказ (регистрация публична, иначе OWNER
+  ушёл бы чужой учётке); `--adopt-existing` выдаёт грант ей же со сбросом пароля.
+  При старте web без OWNER-а — ERROR в лог, старт не блокируется
+- Системный client_app `auth-admin` неизменяем через API (архивация/смена TTL ломала бы
+  вход в админку для всех), `key` client_app-ов уникален
 - Guard: `auth = admin_jwt` (токен без `role` → 401) + `CurrentAdmin` перепроверяет грант в БД
   (отзыв действует сразу); refresh с отозванным грантом ревокает сессию
 - CRUD-эндпоинты: наследовать generic-базы из `web/endpoints/admin/base.py`
@@ -213,7 +217,11 @@ AUTH__PUBLIC_KEY="..."   # PEM public key
 AUTH__PRIVATE_KEY="..."  # PEM private key (не хранить в репо)
 ```
 
-Тестовые RSA-ключи зашиты в `settings/auth.py` для LOCAL-окружения. В продакшене — через env.
+Тестовые RSA-ключи зашиты в `settings/auth.py` **только для LOCAL/TEST**: они лежат в
+публичном репозитории, поэтому вне этих окружений `manage.py start-web` отказывается
+стартовать. Ключи для остальных окружений: `make keys` генерирует пару в `secrets/`
+(gitignored, монтируется в контейнер), пути — `AUTH__PRIVATE_KEY_PATH` /
+`AUTH__PUBLIC_KEY_PATH`; можно и содержимым через `AUTH__PRIVATE_KEY` / `AUTH__PUBLIC_KEY`.
 
 ## Соглашения
 
@@ -231,7 +239,8 @@ AUTH__PRIVATE_KEY="..."  # PEM private key (не хранить в репо)
 ## Команды
 
 ```bash
-make init             # turnkey: весь стек в docker, админка на :8003/admin/ui/
+make init             # turnkey: ключи + весь стек в docker, админка на :8003/admin/ui/
+make keys             # сгенерировать JWT-пару в secrets/ (идемпотентно)
 make dev-init         # dev-окружение: deps + PG в docker + миграции + bootstrap-owner
 make run              # API локально на http://localhost:8002
 make dev-ui           # Vite dev server фронта на :5173 (proxy на :8002)

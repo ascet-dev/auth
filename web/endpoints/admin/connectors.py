@@ -7,6 +7,7 @@ from adc_aiopg.types import Paginated
 from adc_webkit.errors import BadRequest, NotFound
 from adc_webkit.web import Ctx, Response
 from adc_webkit.web.openapi import Doc
+from pydantic import ValidationError as PydanticValidationError
 
 from models.enums import AuthMethod
 from web.endpoints.schemas import OkResponse
@@ -37,6 +38,16 @@ def serialize_connector(entity: Any) -> dict:
     return data
 
 
+def validate_settings(connector_type: AuthMethod, raw: dict) -> dict:
+    """Приводит settings к типам своей модели: в JSONB не должно попасть '3' вместо 3."""
+    model = s.CONNECTOR_SETTINGS_MODELS[connector_type]
+    try:
+        parsed = model.model_validate(raw)
+    except PydanticValidationError as e:
+        raise BadRequest(message=f"Invalid settings for {connector_type}: {e.errors()}") from e
+    return parsed.model_dump(exclude_unset=True)
+
+
 def merge_settings(current: dict | None, patch: dict) -> dict:
     """Merge по ключам; секреты: None = не менять, '' = очистить."""
     merged = dict(current or {})
@@ -47,6 +58,10 @@ def merge_settings(current: dict | None, patch: dict) -> dict:
             if value == "":
                 merged.pop(key, None)
                 continue
+        elif value is None:
+            # None по не-секретному ключу = «не менять», иначе можно записать
+            # null в auth_url и сломать коннектор
+            continue
         merged[key] = value
     return merged
 
@@ -83,8 +98,9 @@ class AdminCreateConnector(AdminEndpoint):
     async def execute(self, ctx: Ctx) -> dict:
         async with self.admin_scope(ctx) as app:
             connector_type = AuthMethod(ctx.body.type)
+            settings = validate_settings(connector_type, ctx.body.settings)
 
-            missing = [k for k in REQUIRED_SETTINGS[connector_type] if not ctx.body.settings.get(k)]
+            missing = [k for k in REQUIRED_SETTINGS[connector_type] if not settings.get(k)]
             if missing:
                 raise BadRequest(message=f"Missing required settings for {connector_type}: {', '.join(missing)}")
 
@@ -97,7 +113,7 @@ class AdminCreateConnector(AdminEndpoint):
                 type=connector_type,
                 name=ctx.body.name,
                 enabled=ctx.body.enabled,
-                settings=merge_settings(None, ctx.body.settings),
+                settings=merge_settings(None, settings),
             )
             return serialize_connector(connector)
 
@@ -122,7 +138,17 @@ class AdminUpdateConnector(AdminEndpoint):
             if "enabled" in patch and patch["enabled"] is not None:
                 payload["enabled"] = patch["enabled"]
             if patch.get("settings") is not None:
-                payload["settings"] = merge_settings(connector.settings, patch["settings"])
+                settings = validate_settings(AuthMethod(connector.type), patch["settings"])
+                merged = merge_settings(connector.settings, settings)
+                missing = [k for k in REQUIRED_SETTINGS[AuthMethod(connector.type)] if not merged.get(k)]
+                if missing:
+                    # Требуемый секрет нельзя «очистить» — коннектор сломался бы
+                    # только в момент логина. Его можно только заменить.
+                    raise BadRequest(
+                        message=f"These settings are required for {connector.type} and cannot be cleared: "
+                        f"{', '.join(missing)}",
+                    )
+                payload["settings"] = merged
 
             if not payload:
                 raise BadRequest(message="Nothing to update")

@@ -90,6 +90,9 @@ export function ClientAppsPage() {
       const saved = id
         ? await api<ClientApp>(`/admin/client-apps/${id}`, { method: "PATCH", body: JSON.stringify(rest) })
         : await api<ClientApp>("/admin/client-apps", { method: "POST", body: JSON.stringify({ key, ...rest }) });
+      // Приложение уже создано: переводим форму в режим правки, чтобы повторный
+      // Save после ошибки маппинга не пытался создать его снова ("key exists")
+      if (!id) setForm({ ...state, id: saved.id });
       await api(`/admin/client-apps/${saved.id}/connectors`, {
         method: "PUT",
         body: JSON.stringify({ connector_ids }),

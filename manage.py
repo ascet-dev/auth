@@ -27,6 +27,17 @@ def cli() -> None:
 @cli.command(short_help="start web")
 def start_web() -> None:
     """Start REST API application."""
+    # Дефолтные ключи лежат в публичном репозитории: с ними кто угодно подпишет
+    # себе админский токен. Вне LOCAL/TEST это фатально, поэтому fail-fast.
+    if cfg.auth.uses_dev_keys and cfg.env not in ("LOCAL", "TEST"):
+        raise click.ClickException(
+            f"Refusing to start in ENV={cfg.env} with the development JWT keys bundled in the repo. "
+            f"Generate a keypair (make keys) and pass AUTH__PRIVATE_KEY_PATH / AUTH__PUBLIC_KEY_PATH "
+            f"(or AUTH__PRIVATE_KEY / AUTH__PUBLIC_KEY).",
+        )
+    if cfg.auth.uses_dev_keys:
+        logger.warning("Using development JWT keys from the repository — never do this outside local dev")
+
     if cfg.logs.sentry.enabled:
         sentry_sdk.init(
             dsn=cfg.logs.sentry.dsn,
@@ -42,7 +53,13 @@ def start_web() -> None:
 @cli.command(short_help="bootstrap owner")
 @click.option("--login", "login", default=None, help="Логин овнера (default: AUTH__OWNER_LOGIN / 'admin')")
 @click.option("--password", "password", default=None, help="Пароль овнера (default: AUTH__OWNER_PASSWORD)")
-def bootstrap_owner(login: str | None, password: str | None) -> None:
+@click.option(
+    "--adopt-existing",
+    is_flag=True,
+    default=False,
+    help="Выдать OWNER существующей учётке с таким логином (её пароль будет перезаписан)",
+)
+def bootstrap_owner(login: str | None, password: str | None, adopt_existing: bool) -> None:
     """
     Идемпотентная инициализация сервиса: системный client_app `auth-admin`
     + identity с password credential + grant OWNER.
@@ -58,14 +75,19 @@ def bootstrap_owner(login: str | None, password: str | None) -> None:
             )
         password = "admin"  # noqa: S105 — дефолт только для LOCAL
 
+    error: str | None = None
+
     async def do() -> None:
+        nonlocal error
         await app.start()
         try:
-            result = await app.bootstrap_owner(login, password)
+            result = await app.bootstrap_owner(login, password, adopt_existing=adopt_existing)
             if result["created"]:
                 logger.info("Owner bootstrapped: identity %s, login '%s'", result["identity_id"], login)
             else:
                 logger.info("Owner already bootstrapped: identity %s", result["identity_id"])
+        except ValueError as e:
+            error = str(e)
         finally:
             await app.stop()
 
@@ -73,6 +95,8 @@ def bootstrap_owner(login: str | None, password: str | None) -> None:
         asyncio.run(do())
     except KeyboardInterrupt:
         logger.critical("Command stopped by user")
+    if error:
+        raise click.ClickException(error)
 
 
 @cli.command(short_help="apply sql")
