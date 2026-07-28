@@ -83,7 +83,12 @@ async function doRefresh(): Promise<boolean> {
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
   if (!res.ok) {
-    clearTokens();
+    // Токен отвергнут — сессии конец. Транзиентный сбой (5xx) сессию не рушит:
+    // иначе перезапуск бэкенда выкидывал бы на логин.
+    if (res.status === 401) {
+      // Другая вкладка могла успеть провернуть ротацию — не стираем её свежий токен
+      if (localStorage.getItem(REFRESH_KEY) === refreshToken) clearTokens();
+    }
     return false;
   }
   storeTokens((await res.json()) as SessionWithTokens);

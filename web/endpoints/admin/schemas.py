@@ -200,17 +200,61 @@ class GrantCreate(PydanticBaseModel):
 # ---------------------------------------------------------------- коннекторы
 
 
+# Типизированные settings по типу коннектора: без валидации в JSONB попадали
+# строки вместо чисел ("3") и ломали сравнения в login-флоу уже в рантайме.
+
+
+class PasswordSettings(PydanticBaseModel):
+    model_config = {"extra": "forbid"}
+
+    max_failed_attempts: int | None = Field(default=None, ge=1, le=100)
+    lockout_minutes: int | None = Field(default=None, ge=1, le=60 * 24 * 7)
+    allow_registration: bool | None = None
+
+
+class TmaSettings(PydanticBaseModel):
+    model_config = {"extra": "forbid"}
+
+    # "" при обновлении = очистить (fallback на env), None = не менять
+    bot_token: str | None = None
+    auth_date_max_age: int | None = Field(default=None, ge=10, le=60 * 60 * 24)
+
+
+class OauthSettings(PydanticBaseModel):
+    model_config = {"extra": "forbid"}
+
+    client_id: str | None = Field(default=None, min_length=1)
+    client_secret: str | None = None
+    auth_url: str | None = Field(default=None, min_length=1)
+    token_url: str | None = Field(default=None, min_length=1)
+    jwks_url: str | None = None
+    userinfo_url: str | None = None
+
+
+class OtpSettings(PydanticBaseModel):
+    model_config = {"extra": "forbid"}
+
+
+CONNECTOR_SETTINGS_MODELS: dict[AuthMethod, type[PydanticBaseModel]] = {
+    AuthMethod.PASSWORD: PasswordSettings,
+    AuthMethod.TMA: TmaSettings,
+    AuthMethod.OAUTH: OauthSettings,
+    AuthMethod.OTP: OtpSettings,
+}
+
+
 class ConnectorCreate(PydanticBaseModel):
-    key: str = Field(min_length=1, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    key: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]*$")
     type: AuthMethod
-    name: str
+    name: str = Field(min_length=1)
     enabled: bool = True
+    # Валидируется по type в эндпоинте (CONNECTOR_SETTINGS_MODELS)
     settings: dict = {}
 
 
 class ConnectorUpdate(PydanticBaseModel):
     # key и type immutable
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1)
     enabled: bool | None = None
     # merge по ключам; секрет: отсутствие/None = не менять, "" = очистить
     settings: dict | None = None

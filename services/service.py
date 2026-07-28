@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode
 
 import aiohttp
+import sqlalchemy as sa
 from adc_aiopg import RowNotFoundError
 from adc_appkit import BaseApp, ComponentStrategy, component
 from adc_appkit.components.component import create_component
@@ -65,6 +66,10 @@ log = getLogger(__name__)
 
 class AdminGrantRevokedError(ValueError):
     """Грант отозван — токен с ролью выдать нельзя, сессию нужно ревокнуть."""
+
+
+class IdentityInactiveError(ValueError):
+    """Identity не ACTIVE — access-токен выдавать нельзя, сессию нужно ревокнуть."""
 
 
 class App(BaseApp):
@@ -274,14 +279,27 @@ class App(BaseApp):
             password,
             credential.secret_hash,
         ):
-            credential.failed_attempts += 1
-            if credential.failed_attempts >= max_failed_attempts:
-                credential.locked_until = now + datetime.timedelta(minutes=lockout_minutes)
+            # Инкремент считает БД: read-modify-write в Python позволял обойти
+            # lockout параллельными запросами (все читали одно и то же значение).
+            table = self.dao.credentials.model
+            # Истёкшая блокировка обнуляет счётчик, иначе одна попытка после
+            # каждого окна держала бы учётку залоченной бессрочно.
+            lock_expired = sa.and_(table.locked_until.isnot(None), table.locked_until <= now)
+            next_attempts = sa.case((lock_expired, 1), else_=table.failed_attempts + 1)
             await self.dao.credentials.update_by_id(
                 credential.id,
-                failed_attempts=credential.failed_attempts,
-                locked_until=credential.locked_until,
+                failed_attempts=next_attempts,
+                locked_until=sa.case(
+                    (
+                        next_attempts >= max_failed_attempts,
+                        now + datetime.timedelta(minutes=lockout_minutes),
+                    ),
+                    (lock_expired, None),
+                    else_=table.locked_until,
+                ),
             )
+            # Ответ на неверный пароль всегда одинаковый; блокировка сработает
+            # на следующей попытке (проверка locked_until выше).
             raise ValueError("Invalid credentials")
 
         credential.failed_attempts = 0
@@ -757,7 +775,13 @@ class App(BaseApp):
 
     async def get_admin_client_app(self) -> ClientApp:
         """Возвращает системный client_app для админских сессий."""
-        apps = await self.dao.client_apps.search(key=AUTH_ADMIN_CLIENT_KEY, archived=False, limit=1)
+        # order_by: детерминированный выбор, даже если в БД оказалось несколько строк
+        apps = await self.dao.client_apps.search(
+            key=AUTH_ADMIN_CLIENT_KEY,
+            archived=False,
+            order_by="created",
+            limit=1,
+        )
         if not apps:
             raise ValueError("Auth service is not initialized: run 'python manage.py bootstrap-owner'")
         return apps[0]
@@ -775,14 +799,24 @@ class App(BaseApp):
             return False
         return True
 
-    async def bootstrap_owner(self, login: str, password: str) -> dict:
+    async def bootstrap_owner(self, login: str, password: str, *, adopt_existing: bool = False) -> dict:
         """
         Идемпотентная инициализация сервиса:
         - создаёт системный client_app `auth-admin`, если его нет;
         - если активный OWNER grant уже есть — no-op;
         - иначе создаёт identity + PASSWORD credential + grant OWNER (granted_by=NULL).
+
+        Если credential с таким логином уже существует — отказ: регистрация публична,
+        и молчаливый реюз отдал бы OWNER произвольной чужой учётке (а переданный
+        пароль был бы проигнорирован). `adopt_existing=True` разрешает выдать грант
+        существующей учётке, перезаписав её пароль.
         """
-        client_apps = await self.dao.client_apps.search(key=AUTH_ADMIN_CLIENT_KEY, archived=False, limit=1)
+        client_apps = await self.dao.client_apps.search(
+            key=AUTH_ADMIN_CLIENT_KEY,
+            archived=False,
+            order_by="created",
+            limit=1,
+        )
         if client_apps:
             client_app = client_apps[0]
         else:
@@ -802,16 +836,32 @@ class App(BaseApp):
             log.info("Active OWNER grant already exists (identity %s), nothing to do", owners[0].identity_id)
             return {"created": False, "identity_id": owners[0].identity_id, "client_app_id": client_app.id}
 
-        # Реюзаем существующий password credential, чтобы повторный bootstrap
-        # (например, после отзыва OWNER) не плодил дубликаты identifier-ов.
         credentials = await self.dao.credentials.search(
             identifier=login,
             type=CredentialType.PASSWORD,
             archived=False,
+            order_by="created",
             limit=1,
         )
         if credentials:
+            if not adopt_existing:
+                raise ValueError(
+                    f"Credential with login '{login}' already exists. "
+                    f"Use a different AUTH__OWNER_LOGIN, or pass --adopt-existing "
+                    f"to grant OWNER to that account (its password will be reset).",
+                )
             identity_id = credentials[0].identity_id
+            # Пароль оператора должен применяться, иначе владельцем станет
+            # тот, кто знает старый пароль этой учётки.
+            await self.dao.credentials.update_by_id(
+                credentials[0].id,
+                secret_hash=self.password_service.hash_password(password),
+                failed_attempts=0,
+                locked_until=None,
+            )
+            # Учётка могла быть заблокирована/удалена — владелец должен быть активен
+            await self.dao.identities.update_by_id(identity_id, status=IdentityStatus.ACTIVE)
+            log.warning("Adopted existing credential '%s' as OWNER, password has been reset", login)
         else:
             identity = await self.dao.identities.create(status=IdentityStatus.ACTIVE)
             identity_id = identity.id
@@ -907,6 +957,11 @@ class App(BaseApp):
                 # Не раскрываем, что учётка существует, но прав нет
                 raise ValueError("Invalid credentials")
 
+            identity = await self.dao.identities.get_by_id(credential.identity_id)
+            if identity.status != IdentityStatus.ACTIVE:
+                # Заблокированный админ — тот же ответ, без деталей
+                raise ValueError("Invalid credentials")
+
             client_app = await self.get_admin_client_app()
 
             session, tokens = await self.create_session(
@@ -924,6 +979,16 @@ class App(BaseApp):
     # Sessions / JWT
     # =============================================================
 
+    async def _get_active_client_app(self, client_app_id: UUID) -> ClientApp:
+        """client_app, пригодный для выдачи сессий: архивация должна отключать вход."""
+        try:
+            client_app = await self.dao.client_apps.get_by_id(client_app_id)
+        except RowNotFoundError:
+            raise ValueError("Client app not found") from None
+        if client_app.archived:
+            raise ValueError("Client app is archived")
+        return client_app
+
     async def create_session(
         self,
         identity_id: UUID,
@@ -938,7 +1003,7 @@ class App(BaseApp):
         - возвращает (session, (access, refresh))
         """
         # Получаем client_app для получения TTL
-        client_app = await self.dao.client_apps.get_by_id(client_app_id)
+        client_app = await self._get_active_client_app(client_app_id)
 
         # Генерируем токены
         access_token = await self.generate_access_token(identity_id, client_app_id)
@@ -997,7 +1062,7 @@ class App(BaseApp):
             await self.dao.sessions.update_by_id(session.id, status=SessionStatus.EXPIRED)
             raise ValueError("Refresh token expired")
 
-        client_app = await self.dao.client_apps.get_by_id(client_app_id)
+        client_app = await self._get_active_client_app(client_app_id)
 
         # 3) rotate refresh token (new opaque token + hash)
         new_refresh_token = await self.generate_refresh_token()
@@ -1014,8 +1079,8 @@ class App(BaseApp):
         # 4) new access token
         try:
             access_token = await self.generate_access_token(session.identity_id, client_app_id)
-        except AdminGrantRevokedError:
-            # Админский грант отозван — сессия больше не имеет права жить
+        except (AdminGrantRevokedError, IdentityInactiveError):
+            # Грант отозван или identity заблокирована — сессия больше не имеет права жить
             await self.dao.sessions.update_by_id(session.id, status=SessionStatus.REVOKED)
             raise ValueError("Invalid refresh token") from None
 
@@ -1111,9 +1176,18 @@ class App(BaseApp):
         1. Основные claims: sub, iat, exp, tenant
         2. Для системного client_app `auth-admin` добавляет claim `role`
         3. Дёргает внешний сервис за бизнес-контекстом
+
+        Единая точка выдачи access-токенов, поэтому статус identity проверяется
+        здесь: BLOCKED/DELETED не должен получить подписанный токен ни при
+        логине, ни при refresh (внешние потребители проверяют только подпись).
         """
-        # Получаем identity для tenant_id
-        identity = await self.get_identity(identity_id)
+        try:
+            identity = await self.dao.identities.get_by_id(identity_id)
+        except RowNotFoundError:
+            raise IdentityInactiveError(f"Identity {identity_id} not found") from None
+
+        if identity.status != IdentityStatus.ACTIVE:
+            raise IdentityInactiveError(f"Identity is not active (status: {identity.status})")
 
         now = datetime.datetime.now(datetime.UTC)
         exp = now + cfg.auth.access_token_lifetime

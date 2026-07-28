@@ -1,16 +1,53 @@
 # Tech debt
 
-- [x] auth схема нужна миграции, но не создается — закрыто: `alembic/env.py` делает
-      `CREATE SCHEMA IF NOT EXISTS` до старта миграций (иначе падало создание `auth.alembic_version`)
+## Безопасность (не блокеры, но чинить стоит)
+
+- [ ] **OAuth: нет CSRF-защиты authorization code flow.** `state` генерируется в
+      `start_oauth_flow`, но нигде не хранится, а `login_by_oauth` его не принимает.
+      Нужно: хранить state (короткоживущая запись/кеш) + сверять при обмене кода.
+- [ ] **id_token не верифицируется** (`jwt_decode(..., verify_signature=False)`) —
+      подпись провайдера не проверяется, хотя `jwks_url` уже есть в settings коннектора.
+- [ ] **Полный `token_response` провайдера пишется в `credential.meta`** открытым текстом
+      (включая access/refresh токены провайдера). Хранить только нужные поля.
+- [ ] **Нет rate-limit по IP** на login-эндпоинтах. Lockout теперь атомарный и per-credential,
+      но распределённый перебор по многим логинам ничем не ограничен.
+- [ ] `allow_registration=false` даёт лишь частичную изоляцию: credential-ы глобальны,
+      а `client_app_id` в `/auth/register/password` необязателен — зарегистрировавшись
+      через другое приложение, юзер сможет войти туда, где регистрация закрыта.
+- [ ] refresh-токен админки в localStorage (XSS-поверхность). Hardening — httpOnly-cookie
+      + CSRF-защита, потребует новой backend-поверхности.
+- [ ] Ошибки REQUEST-компонентов (`CurrentIdentity`) в пользовательских эндпоинтах
+      маппятся в 500; в админских — в 401 через `admin_scope`. Унифицировать.
+
+## Функциональность
+
 - [ ] `client_app.access_token_ttl_sec` не используется: access TTL всегда глобальный
-      `cfg.auth.access_token_lifetime` (1 мин). Для админки не блокер, но чинить стоит
-      (брать TTL из client_app в `build_jwt_payload`)
-- [ ] refresh-токен админки хранится в localStorage (XSS-поверхность). Hardening: httpOnly-cookie
-      + CSRF-защита — потребует новой backend-поверхности (set/read cookie в login/refresh)
-- [ ] ошибки REQUEST-компонентов (`CurrentIdentity`) в пользовательских эндпоинтах маппятся в 500
-      (generic handler), в админских — в 401 через `admin_scope`. Унифицировать (401 везде)
-- [ ] `alembic downgrade` не дропает enum-типы из 0001 → `make db-reset` падает на
-      `CREATE TYPE ... already exists` (в 0002 downgrade уже дропает `admin_role`)
-- [ ] `settings/doc.py` (`cfg.doc`) не подключён к `Web.doc` — Swagger живёт с дефолтным тайтлом
-- [ ] `ENV` читается и из процесса (`settings/env.py`), и через `cfg.env` — два источника истины,
-      `.env` может их рассинхронизировать
+      `cfg.auth.access_token_lifetime` (1 мин). Брать из client_app в `build_jwt_payload`.
+- [ ] SSO между приложениями отсутствует: сессии и токены per-app, центральной
+      login-страницы с authorization code flow нет.
+- [ ] Мультивкладочный refresh: токен single-use, дедупликация только внутри вкладки
+      (`frontend/src/api/client.ts`). Две вкладки с истёкшим access-токеном могут
+      разлогинить друг друга (частично закрыто: чужой свежий токен не стирается).
+- [ ] `alembic downgrade` не дропает enum-типы из 0001 → `make db-reset` падает
+      на `CREATE TYPE ... already exists` (в 0002/0004 downgrade уже дропает свои типы).
+- [ ] `settings/doc.py` (`cfg.doc`) не подключён к `Web.doc` — Swagger с дефолтным тайтлом.
+- [ ] `ENV` читается и из процесса (`settings/env.py`), и через `cfg.env` — два источника
+      истины, `.env` может их рассинхронизировать.
+
+## Закрыто
+
+- [x] auth-схема не создавалась перед миграциями — `alembic/env.py` делает
+      `CREATE SCHEMA IF NOT EXISTS` до старта миграций
+- [x] Системный `auth-admin` client_app можно было заархивировать/переконфигурировать
+      через админку (полный отказ входа в админку) — теперь неизменяем через API,
+      `key` уникален (миграция 0005)
+- [x] Lockout обходился параллельными запросами (read-modify-write счётчика) —
+      инкремент считает БД; счётчик обнуляется по истечении окна блокировки
+- [x] Дефолтные RSA-ключи из репозитория позволяли подписать админский токен —
+      вне LOCAL/TEST старт блокируется, `make keys` генерирует пару в `secrets/`
+- [x] `bootstrap-owner` мог отдать OWNER существующей (чужой) учётке и игнорировал
+      переданный пароль — теперь отказ, `--adopt-existing` со сбросом пароля
+- [x] `identity.status` не проверялся при выдаче токенов — проверка в `build_jwt_payload`
+      (единая точка), refresh ревокает сессию заблокированной identity
+- [x] Архивированный client_app продолжал выдавать и обновлять сессии
+- [x] `settings` коннекторов не типизировались (строка вместо числа → 500 в рантайме)
