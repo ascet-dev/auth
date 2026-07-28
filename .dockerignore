@@ -52,9 +52,10 @@ Thumbs.db
 # Project specific
 logs/
 tmp/
-*.log
-alembic/versions/*.py
-!alembic/versions/__init__.py
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
 
 # Documentation
 README.md
@@ -66,4 +67,4 @@ test_*
 
 # Development
 Makefile
-.pre-commit-config.yaml 
+.pre-commit-config.yaml

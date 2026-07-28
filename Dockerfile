@@ -1,3 +1,12 @@
+# --- Админский SPA: собирается здесь, node на хосте не нужен ---
+FROM node:22-alpine AS frontend-build
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.12-slim-bookworm AS base
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
@@ -27,6 +36,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --all-extras
 
 COPY . .
+COPY --from=frontend-build /frontend/dist /app/frontend/dist
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -45,6 +55,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev
 
 COPY . .
+COPY --from=frontend-build /frontend/dist /app/frontend/dist
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1

@@ -45,3 +45,10 @@ class AuthClientType(StrEnum):
 
     PUBLIC = "PUBLIC"
     CONFIDENTIAL = "CONFIDENTIAL"
+
+
+class AdminRole(StrEnum):
+    __meta__ = meta
+
+    OWNER = "OWNER"
+    ADMIN = "ADMIN"

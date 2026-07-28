@@ -1,6 +1,7 @@
 from adc_aiopg.repository import PGDataAccessObject, PostgresAccessLayer, TableDescriptor
 
 import models as m
+from models.admin_grant import AuthAdminGrant
 from models.client_app import ClientApp
 from models.credential import Credential
 from models.identity import AuthIdentity
@@ -11,7 +12,7 @@ from models.otp_challenge import AuthOtpChallenge
 from models.session import Session
 
 
-class DAO(PostgresAccessLayer, metadata=m.base.meta):  # type: ignore[call-arg]
+class DAO(PostgresAccessLayer, metadata=m.base.meta):  # type: ignore[call-arg, unused-ignore]
     identities = TableDescriptor(PGDataAccessObject.from_model(AuthIdentity, "auth_identities"))
     credentials = TableDescriptor(PGDataAccessObject.from_model(Credential, "auth_credentials"))
     sessions = TableDescriptor(PGDataAccessObject.from_model(Session, "auth_sessions"))
@@ -22,3 +23,4 @@ class DAO(PostgresAccessLayer, metadata=m.base.meta):  # type: ignore[call-arg]
         PGDataAccessObject.from_model(AuthIdentityExternalLink, "auth_identity_external_links"),
     )
     logins = TableDescriptor(PGDataAccessObject.from_model(Login, "auth_logins"))
+    admin_grants = TableDescriptor(PGDataAccessObject.from_model(AuthAdminGrant, "auth_admin_grants"))

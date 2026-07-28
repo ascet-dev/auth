@@ -56,3 +56,18 @@ class LoginByTMARequest(PydanticBaseModel):
 
 class RevokedSessionsResponse(PydanticBaseModel):
     revoked_sessions: int
+
+
+class AdminLoginRequest(PydanticBaseModel):
+    login: str
+    password: str
+
+
+class AdminRefreshRequest(PydanticBaseModel):
+    # client_app_id не нужен: админские сессии живут под системным client_app
+    refresh_token: str
+
+
+class AdminMeResponse(PydanticBaseModel):
+    identity_id: UUID
+    role: str
