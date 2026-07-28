@@ -30,10 +30,11 @@ async def test_admin_login_wrong_password_and_lockout(client, owner):
         resp = await client.post("/admin/auth/login", json={"login": "admin", "password": "wrong"})
         assert resp.status_code == 401
 
-    # 6-я попытка (даже с верным паролем) — locked
+    # 6-я попытка отбита блокировкой — ответ неотличим от неверного пароля
+    # (иначе состояние блокировки выдавало бы существование учётки)
     resp = await client.post("/admin/auth/login", json={"login": "admin", "password": "admin"})
-    assert resp.status_code == 400
-    assert "locked" in resp.json()["message"].lower()
+    assert resp.status_code == 401
+    assert resp.json()["message"] == "Invalid credentials"
 
 
 async def test_admin_login_without_grant(client, app, owner):

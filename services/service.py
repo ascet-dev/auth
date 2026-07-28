@@ -273,7 +273,9 @@ class App(BaseApp):
         credential = credentials[0]
 
         if credential.locked_until and credential.locked_until > now:
-            raise ValueError("Credential is locked")
+            # Тот же ответ, что и на неверный пароль: иначе состояние блокировки
+            # выдаёт существование учётки (enumeration) и порог политики.
+            raise ValueError("Invalid credentials")
 
         if not credential.secret_hash or not self.password_service.verify_password(
             password,

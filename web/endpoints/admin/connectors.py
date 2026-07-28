@@ -13,7 +13,7 @@ from models.enums import AuthMethod
 from web.endpoints.schemas import OkResponse
 
 from . import schemas as s
-from .base import AdminArchive, AdminEndpoint, AdminList, Conflict, dump_entity
+from .base import AdminArchive, AdminEndpoint, AdminList, Conflict, conflict_on_unique, dump_entity
 
 # Секретные ключи settings: наружу отдаётся только флаг <key>_set
 SECRET_SETTINGS_KEYS = ("bot_token", "client_secret")
@@ -108,13 +108,14 @@ class AdminCreateConnector(AdminEndpoint):
             if existing:
                 raise Conflict(message=f"Connector with key '{ctx.body.key}' already exists")
 
-            connector = await app.dao.connectors.create(
-                key=ctx.body.key,
-                type=connector_type,
-                name=ctx.body.name,
-                enabled=ctx.body.enabled,
-                settings=merge_settings(None, settings),
-            )
+            async with conflict_on_unique():
+                connector = await app.dao.connectors.create(
+                    key=ctx.body.key,
+                    type=connector_type,
+                    name=ctx.body.name,
+                    enabled=ctx.body.enabled,
+                    settings=merge_settings(None, settings),
+                )
             return serialize_connector(connector)
 
 
@@ -219,7 +220,11 @@ class AdminSetClientAppConnectors(AdminEndpoint):
             for connector_id, link in current_by_connector.items():
                 if connector_id not in wanted:
                     await app.dao.client_app_connectors.archive_by_id(link.id)
-            for connector_id in wanted - set(current_by_connector):
-                await app.dao.client_app_connectors.create(client_app_id=client_app.id, connector_id=connector_id)
+            async with conflict_on_unique():
+                for connector_id in wanted - set(current_by_connector):
+                    await app.dao.client_app_connectors.create(
+                        client_app_id=client_app.id,
+                        connector_id=connector_id,
+                    )
 
             return [serialize_connector(c) for c in connectors]

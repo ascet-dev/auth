@@ -266,8 +266,11 @@ keys: ## Generate JWT keypair into secrets/ (skips if it already exists)
 		mkdir -p secrets && \
 		openssl genrsa -out secrets/jwt_private.pem 2048 2>/dev/null && \
 		openssl rsa -in secrets/jwt_private.pem -pubout -out secrets/jwt_public.pem 2>/dev/null && \
-		chmod 600 secrets/jwt_private.pem && \
+		chmod 644 secrets/jwt_private.pem secrets/jwt_public.pem && \
 		echo "JWT keypair created in secrets/ (gitignored)."; \
+		echo "⚠️  Локальные dev-ключи: файл читаемый всем, потому что в контейнере"; \
+		echo "   процесс идёт под своим uid (на нативном Linux он не совпадает с хостовым)."; \
+		echo "   Ключи для прода выдаёт секрет-стор платформы, не этот таргет."; \
 	fi
 
 init: ## Turnkey: full stack in docker (build SPA + backend, migrate, bootstrap owner)

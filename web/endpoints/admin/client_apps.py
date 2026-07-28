@@ -12,7 +12,7 @@ from services.service import AUTH_ADMIN_CLIENT_KEY
 from web.endpoints.schemas import OkResponse
 
 from . import schemas as s
-from .base import AdminArchive, AdminCreate, AdminGet, AdminList, AdminUpdate, Conflict
+from .base import AdminArchive, AdminCreate, AdminGet, AdminList, AdminUpdate, Conflict, conflict_on_unique
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -62,7 +62,8 @@ class AdminCreateClientApp(AdminCreate):
             if existing:
                 raise Conflict(message=f"Client app with key '{ctx.body.key}' already exists")
 
-            entity = await self.dao(app).create(**self.build_create_payload(ctx))
+            async with conflict_on_unique():
+                entity = await self.dao(app).create(**self.build_create_payload(ctx))
             return self.serialize(entity)
 
 

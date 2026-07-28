@@ -72,10 +72,19 @@ uF2ndSF/IXss+GMHYPwu3OgTD2NRGuVR+5LjiQPRnx861/djZbvh2ok=
     @model_validator(mode="after")
     def _load_keys_from_files(self) -> "Auth":
         """PEM из файлов приоритетнее: многострочные env неудобны и в compose, и в k8s."""
-        if self.private_key_path:
-            self.private_key = self.private_key_path.read_text(encoding="utf-8")
-        if self.public_key_path:
-            self.public_key = self.public_key_path.read_text(encoding="utf-8")
+        for field, path in (("private_key", self.private_key_path), ("public_key", self.public_key_path)):
+            if not path:
+                continue
+            try:
+                setattr(self, field, path.read_text(encoding="utf-8"))
+            except OSError as e:
+                # Молчаливого отката на dev-ключи быть не должно, но и сырой
+                # FileNotFoundError непонятен — говорим, что делать.
+                raise ValueError(
+                    f"Cannot read JWT {field} from {path}: {e.strerror}. "
+                    f"Run 'make keys' to generate a keypair in ./secrets, "
+                    f"or unset AUTH__{field.upper()}_PATH to use AUTH__{field.upper()}.",
+                ) from e
         return self
 
     @property

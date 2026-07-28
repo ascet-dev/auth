@@ -157,13 +157,14 @@ async def test_password_policy_from_connector(client, app, auth_headers, test_cl
         )
         assert resp.status_code == 401
 
-    # после 3 неудач — locked (даже с верным паролем)
+    # после 3 неудач верный пароль тоже отбит (блокировка), ответ обезличенный
     resp = await client.post(
         "/auth/login/password",
         json={"login": "u@x.com", "password": "secret123", "client_app_id": str(test_client_app.id)},
     )
-    assert resp.status_code == 400
-    assert "locked" in resp.json()["message"].lower()
+    assert resp.status_code == 401
+    credentials = await app.dao.credentials.search(identifier="u@x.com", archived=False)
+    assert credentials[0].locked_until is not None
 
 
 async def test_registration_disabled_by_connector(client, auth_headers, test_client_app):

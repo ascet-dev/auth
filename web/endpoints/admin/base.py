@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from adc_aiopg import RowNotFoundError
 from adc_webkit.errors import BadRequest, Forbidden, NotFound, Unauthorized
 from adc_webkit.web import Ctx, JsonEndpoint
+from asyncpg.exceptions import UniqueViolationError
 
 from models.enums import AdminRole
 from web.auth import admin_jwt
@@ -24,6 +25,18 @@ if TYPE_CHECKING:
 class Conflict(BadRequest):
     description = "Conflict"
     status_code = 409
+
+
+@asynccontextmanager
+async def conflict_on_unique() -> AsyncIterator[None]:
+    """
+    Гонка на unique-индексе — это 409, а не 500: pre-check в эндпоинтах ловит
+    обычный случай, но два параллельных create проскакивают мимо него.
+    """
+    try:
+        yield
+    except UniqueViolationError as e:
+        raise Conflict(message="Resource with these unique fields already exists") from e
 
 
 def dump_entity(entity: Any) -> dict:
@@ -100,7 +113,7 @@ class AdminGet(AdminResourceEndpoint, ABC):
 
 class AdminCreate(AdminResourceEndpoint, ABC):
     async def execute(self, ctx: Ctx) -> dict:
-        async with self.admin_scope(ctx) as app:
+        async with self.admin_scope(ctx) as app, conflict_on_unique():
             payload = self.build_create_payload(ctx)
             entity = await self.dao(app).create(**payload)
             return self.serialize(entity)
@@ -111,7 +124,7 @@ class AdminCreate(AdminResourceEndpoint, ABC):
 
 class AdminUpdate(AdminResourceEndpoint, ABC):
     async def execute(self, ctx: Ctx) -> dict:
-        async with self.admin_scope(ctx) as app:
+        async with self.admin_scope(ctx) as app, conflict_on_unique():
             payload = self.build_update_payload(ctx)
             if not payload:
                 raise BadRequest(message="Nothing to update")
@@ -122,7 +135,9 @@ class AdminUpdate(AdminResourceEndpoint, ABC):
             return self.serialize(entity)
 
     def build_update_payload(self, ctx: Ctx) -> dict:
-        return ctx.body.model_dump(exclude_unset=True)
+        # exclude_none: явный null в PATCH означает «не менять», а не «записать NULL»
+        # (иначе {"name": null} доезжал до БД и падал на NOT NULL с 500)
+        return ctx.body.model_dump(exclude_unset=True, exclude_none=True)
 
 
 class AdminArchive(AdminResourceEndpoint, ABC):
