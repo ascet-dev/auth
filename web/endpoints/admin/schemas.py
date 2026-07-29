@@ -7,13 +7,10 @@ Read-модели выводятся из табличных моделей че
 Search-модели наследуют `BaseSearch` из models/base.py.
 """
 
-import copy
-from typing import Any
 from uuid import UUID
 
-from adc_aiopg.types import Base
 from pydantic import BaseModel as PydanticBaseModel
-from pydantic import Field, create_model
+from pydantic import Field
 
 from models.admin_grant import AuthAdminGrant
 from models.base import BaseSearch
@@ -25,22 +22,6 @@ from models.identity import AuthIdentity
 from models.identity_external_link import AuthIdentityExternalLink
 from models.logins import Login
 from models.session import Session
-
-
-def optional(model: type[Base], name: str) -> type[Base]:
-    """
-    Все поля модели становятся необязательными (для PATCH-схем).
-
-    Своя реализация вместо Base.partial(): та мутирует FieldInfo исходной модели
-    (объекты полей общие), из-за чего у родителя пропадали бы обязательные поля.
-    """
-    fields: dict[str, Any] = {}
-    for field_name, field in model.model_fields.items():
-        clone = copy.deepcopy(field)
-        clone.default = None
-        fields[field_name] = (field.annotation | None, clone)
-    return create_model(name, __base__=Base, **fields)
-
 
 # ---------------------------------------------------------------- запросы
 
@@ -146,7 +127,7 @@ ClientAppCreate = ClientApp.only(
     "refresh_token_ttl_sec",
 )
 # key immutable — это идентификатор аудитории
-ClientAppUpdate = optional(ClientAppCreate.exclude("key"), "ClientAppUpdate")
+ClientAppUpdate = ClientAppCreate.exclude("key").partial()
 
 
 # ---------------------------------------------------------------- коннекторы
