@@ -204,6 +204,7 @@ export function ConnectorsPage() {
       <DataTable
         data={query.data}
         isLoading={query.isLoading}
+        error={query.error as Error | null}
         columns={columns}
         page={page}
         pageSize={PAGE_SIZE}

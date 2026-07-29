@@ -19,7 +19,7 @@ class AdminListIdentities(AdminList):
 
 class AdminGetIdentity(AdminEndpoint):
     doc = Doc(tags=["admin", "identities"], summary="Identity detail: credentials, links, grant")
-    query = s.ByIdPath
+    query = s.IdentityPath
     response = Response(s.IdentityDetail)
 
     async def execute(self, ctx: Ctx) -> dict:

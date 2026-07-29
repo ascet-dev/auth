@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { apiLogin, apiLogout, apiMe, hasStoredSession, tryRefresh } from "../api/client";
+import { apiLogin, apiLogout, apiMe, hasStoredSession, setSessionLostHandler, tryRefresh } from "../api/client";
 import type { Me } from "../api/types";
 
 interface AuthState {
@@ -15,6 +15,12 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState<Me | null>(null);
+
+  useEffect(() => {
+    // Сессия окончательно потеряна (refresh отвергнут) → уводим на логин
+    setSessionLostHandler(() => setMe(null));
+    return () => setSessionLostHandler(null);
+  }, []);
 
   useEffect(() => {
     // boot: есть refresh-токен → пробуем восстановить сессию

@@ -1,4 +1,4 @@
-import { Center, Group, Loader, Pagination, Table, Text } from "@mantine/core";
+import { Alert, Center, Group, Loader, Pagination, Table, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 
 import type { Paginated } from "../api/types";
@@ -12,6 +12,7 @@ export interface Column<T> {
 interface DataTableProps<T> {
   data: Paginated<T> | undefined;
   isLoading: boolean;
+  error?: Error | null;
   columns: Column<T>[];
   page: number;
   pageSize: number;
@@ -20,7 +21,17 @@ interface DataTableProps<T> {
 }
 
 export function DataTable<T extends { id: string }>(props: DataTableProps<T>) {
-  const { data, isLoading, columns, page, pageSize, onPageChange, onRowClick } = props;
+  const { data, isLoading, error, columns, page, pageSize, onPageChange, onRowClick } = props;
+
+  // Ошибку показываем явно: иначе неудачный запрос неотличим от загрузки
+  // и таблица навсегда остаётся спиннером
+  if (error) {
+    return (
+      <Alert color="red" title="Не удалось загрузить данные">
+        {error.message}
+      </Alert>
+    );
+  }
 
   if (isLoading || !data) {
     return (

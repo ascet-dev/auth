@@ -50,10 +50,18 @@ class Auth(BaseSettings):
         Проверка перед стартом того, что подписывает или проверяет токены.
         Не в валидаторе: CLI-командам вроде apply-sql ключи не нужны.
         """
+        hint = (
+            "Run 'make keys' to generate a keypair in ./secrets, then pass "
+            "AUTH__PRIVATE_KEY_PATH / AUTH__PUBLIC_KEY_PATH (or AUTH__PRIVATE_KEY / AUTH__PUBLIC_KEY)."
+        )
         missing = [name for name in ("private_key", "public_key") if not getattr(self, name)]
         if missing:
-            raise ValueError(
-                f"JWT keys are not configured ({', '.join(missing)}). "
-                f"Run 'make keys' to generate a keypair in ./secrets, then pass "
-                f"AUTH__PRIVATE_KEY_PATH / AUTH__PUBLIC_KEY_PATH (or AUTH__PRIVATE_KEY / AUTH__PUBLIC_KEY).",
-            )
+            raise ValueError(f"JWT keys are not configured ({', '.join(missing)}). {hint}")
+
+        # Формат проверяем здесь же: беспрефиксные PRIVATE_KEY/PUBLIC_KEY из окружения
+        # подхватываются pydantic-settings, и без этой проверки сервис стартовал бы
+        # с мусором вместо ключа, падая на каждой подписи.
+        for name, marker in (("private_key", "PRIVATE KEY"), ("public_key", "PUBLIC KEY")):
+            value = getattr(self, name)
+            if marker not in value or "-----BEGIN" not in value:
+                raise ValueError(f"JWT {name} does not look like a PEM {marker.lower()}. {hint}")

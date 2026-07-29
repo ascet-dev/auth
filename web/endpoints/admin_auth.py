@@ -38,6 +38,10 @@ class AdminLogin(JsonEndpoint):
             )
         except ValueError as e:
             msg = str(e) or "Invalid credentials"
+            if "is not initialized" in msg:
+                # Состояние инициализации сервиса — не для неаутентифицированного вызывающего
+                logger.error(msg)
+                raise Unauthorized(message="Invalid credentials") from e
             if "invalid credentials" in msg.lower():
                 raise Unauthorized(message=msg) from e
             raise BadRequest(message=msg) from e
