@@ -43,7 +43,7 @@ class AdminListClientApps(AdminList):
 class AdminGetClientApp(AdminGet):
     doc = Doc(tags=["admin", "client-apps"], summary="Get client app")
     table = "client_apps"
-    query = s.ByIdPath
+    query = s.ClientAppPath
     response = Response(s.ClientAppRead)
 
 
@@ -70,7 +70,7 @@ class AdminCreateClientApp(AdminCreate):
 class AdminUpdateClientApp(AdminUpdate):
     doc = Doc(tags=["admin", "client-apps"], summary="Update client app (key immutable)")
     table = "client_apps"
-    query = s.ByIdPath
+    query = s.ClientAppPath
     body = s.ClientAppUpdate
     response = Response(s.ClientAppRead)
 
@@ -83,7 +83,7 @@ class AdminUpdateClientApp(AdminUpdate):
 class AdminArchiveClientApp(AdminArchive):
     doc = Doc(tags=["admin", "client-apps"], summary="Archive client app (soft delete)")
     table = "client_apps"
-    query = s.ByIdPath
+    query = s.ClientAppPath
     response = Response(OkResponse)
 
     async def execute(self, ctx: Ctx) -> dict:

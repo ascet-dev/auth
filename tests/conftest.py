@@ -67,6 +67,14 @@ def _test_database():
     parsed = urlparse(TEST_DSN)
     db_name = parsed.path.lstrip("/")
 
+    # Ниже DROP DATABASE ... WITH (FORCE). Если PG__CONNECTION__DSN экспортирован
+    # в шелле, setdefault выше его не перебьёт — и снесёт дев-базу.
+    if not db_name.endswith("_test"):
+        raise RuntimeError(
+            f"Refusing to run tests against '{db_name}': the test database name must end with '_test'. "
+            f"Unset PG__CONNECTION__DSN or point it at a test database.",
+        )
+
     conn = psycopg2.connect(
         host=parsed.hostname,
         port=parsed.port or 5432,

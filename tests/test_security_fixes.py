@@ -140,6 +140,8 @@ async def test_expired_lockout_resets_counter(client, app, test_client_app):
     credentials = await app.dao.credentials.search(identifier="u@x.com", archived=False)
     credential = credentials[0]
 
+    # naive UTC: колонка timestamp without time zone, поэтому приводим явно,
+    # иначе тест зависел бы от таймзоны машины
     past = datetime.datetime.now(datetime.UTC).replace(tzinfo=None) - datetime.timedelta(minutes=1)
     await app.dao.credentials.update_by_id(credential.id, failed_attempts=5, locked_until=past)
 
@@ -359,3 +361,25 @@ async def test_concurrent_duplicate_create_is_conflict(client, auth_headers):
     codes = sorted(r.status_code for r in results)
     assert codes[0] == 200
     assert set(codes[1:]) == {409}, [r.text for r in results]
+
+
+async def test_admin_cannot_revoke_owner_session(client, app, owner, owner_tokens, admin_headers):
+    """ADMIN не выбивает владельца из его же админки."""
+    session_id = owner_tokens["session"]["id"]
+    resp = await client.delete(f"/admin/sessions/{session_id}", headers=admin_headers)
+    assert resp.status_code == 403, resp.text
+
+    session = await app.dao.sessions.get_by_id(session_id)
+    assert session.status == SessionStatus.ACTIVE
+
+
+async def test_grant_not_found_is_404(client, auth_headers):
+    resp = await client.delete("/admin/grants/00000000-0000-0000-0000-000000000000", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+async def test_bootstrap_state_not_leaked_to_anonymous(client, app, clean_db):
+    """Сообщение про 'run bootstrap-owner' не должно уходить неаутентифицированному."""
+    resp = await client.post("/admin/auth/login", json={"login": "admin", "password": "admin"})
+    assert resp.status_code == 401
+    assert resp.json()["message"] == "Invalid credentials"

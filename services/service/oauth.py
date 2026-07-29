@@ -74,6 +74,7 @@ class OauthMixin(ServiceBase):
             ip_address=ip_address,
             user_agent=user_agent,
         ) as logger:
+            await self.ensure_public_client_app(client_app_id)
             connector_key, oauth_cfg = await self.resolve_auth_connector(
                 AuthMethod.OAUTH,
                 client_app_id,

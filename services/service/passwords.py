@@ -149,6 +149,7 @@ class PasswordsMixin(ServiceBase):
             ip_address=ip_address,
             user_agent=user_agent,
         ) as logger:
+            await self.ensure_public_client_app(client_app_id)
             _, policy = await self.resolve_auth_connector(AuthMethod.PASSWORD, client_app_id)
 
             credential = await self._verify_password_credential(

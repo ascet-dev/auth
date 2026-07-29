@@ -1,7 +1,7 @@
 import typing as t
 
 from adc_aiopg.enum import sqla_enum
-from sqlalchemy import Column
+from sqlalchemy import Column, Index, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field
 
@@ -27,6 +27,9 @@ class AuthConnector(BaseModel):
     Если коннекторов типа нет вообще — работают встроенные дефолты
     (PASSWORD: политика из констант; TMA: bot token из env).
     """
+
+    # Индексы объявлены в модели, иначе следующий autogenerate снесёт их из БД
+    __table_args__ = (Index("uq_auth_connectors_key", "key", unique=True, postgresql_where=text("archived = false")),)
 
     # Слаг: "tma-shop-bot", "google-web", "password-default".
     # Для OAUTH это значение параметра `provider` в /auth/oauth/*.

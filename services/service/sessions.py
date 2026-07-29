@@ -11,6 +11,7 @@ from adc_aiopg import RowNotFoundError
 from models.client_app import ClientApp  # noqa: TC001
 from models.enums import SessionStatus
 from models.session import Session  # noqa: TC001
+from services.service.constants import AUTH_ADMIN_CLIENT_KEY
 from services.service.errors import AdminGrantRevokedError, IdentityInactiveError
 
 from .base import ServiceBase
@@ -30,6 +31,19 @@ class SessionsMixin(ServiceBase):
             raise ValueError("Client app not found") from None
         if client_app.archived:
             raise ValueError("Client app is archived")
+        return client_app
+
+    async def ensure_public_client_app(self, client_app_id: UUID) -> ClientApp:
+        """
+        client_app для публичных login-флоу.
+
+        Системное приложение запрещено: именно по его key в токен кладётся claim
+        `role`, поэтому вход под ним в обход login_by_admin — это выдача себе
+        админского токена (и, через подделку TMA/OAuth-субъекта, за чужую identity).
+        """
+        client_app = await self._get_active_client_app(client_app_id)
+        if client_app.key == AUTH_ADMIN_CLIENT_KEY:
+            raise ValueError(f"Client app '{AUTH_ADMIN_CLIENT_KEY}' is reserved for the admin UI")
         return client_app
 
     async def create_session(

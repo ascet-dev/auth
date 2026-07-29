@@ -11,6 +11,15 @@ import type { Column } from "../components/DataTable";
 
 const PAGE_SIZE = 50;
 
+// Частичный UUID даёт 400 от API, поэтому фильтр применяем только когда он валиден
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function asUuidFilter(value: string): string | undefined {
+  const trimmed = value.trim();
+  return UUID_RE.test(trimmed) ? trimmed : undefined;
+}
+
+
 const STATUS_COLORS: Record<string, string> = {
   ACTIVE: "green",
   REVOKED: "gray",
@@ -33,7 +42,7 @@ export function SessionsPage() {
           limit: PAGE_SIZE,
           offset: (page - 1) * PAGE_SIZE,
           status: status ?? undefined,
-          identity_id: identityId.trim() || undefined,
+          identity_id: asUuidFilter(identityId),
         })}`,
       ),
   });
@@ -81,6 +90,7 @@ export function SessionsPage() {
         <Group>
           <TextInput
             placeholder="Filter by identity UUID"
+            description={identityId.trim() && !asUuidFilter(identityId) ? "Введите полный UUID" : undefined}
             value={identityId}
             onChange={(e) => {
               setIdentityId(e.currentTarget.value);
@@ -106,6 +116,7 @@ export function SessionsPage() {
       <DataTable
         data={query.data}
         isLoading={query.isLoading}
+        error={query.error as Error | null}
         columns={columns}
         page={page}
         pageSize={PAGE_SIZE}

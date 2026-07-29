@@ -1,4 +1,5 @@
 from adc_aiopg.types import Paginated
+from adc_webkit.errors import NotFound
 from adc_webkit.web import Ctx, Response
 from adc_webkit.web.openapi import Doc
 
@@ -32,6 +33,9 @@ class AdminCreateGrant(AdminEndpoint):
                     granted_by=app.current_admin.identity.id,
                 )
             except ValueError as e:
+                # «не найдено» — это 404, а не конфликт состояния
+                if "not found" in str(e).lower():
+                    raise NotFound(message=str(e)) from e
                 raise Conflict(message=str(e)) from e
             return dump_entity(grant)
 
@@ -40,7 +44,7 @@ class AdminRevokeGrant(AdminEndpoint):
     doc = Doc(tags=["admin", "grants"], summary="Revoke admin grant (OWNER only)")
     require_role = AdminRole.OWNER
 
-    query = s.ByIdPath
+    query = s.GrantPath
     response = Response(OkResponse)
 
     async def execute(self, ctx: Ctx) -> dict:
@@ -48,5 +52,7 @@ class AdminRevokeGrant(AdminEndpoint):
             try:
                 await app.revoke_admin_grant(ctx.query.id)
             except ValueError as e:
+                if "not found" in str(e).lower():
+                    raise NotFound(message=str(e)) from e
                 raise Conflict(message=str(e)) from e
             return {"ok": True}

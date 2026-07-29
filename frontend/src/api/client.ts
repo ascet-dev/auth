@@ -7,6 +7,15 @@ const SESSION_KEY = "auth_admin_session_id";
 let accessToken: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
 
+// Подписка на окончательную потерю сессии: без неё AuthContext не узнавал бы,
+// что токены стёрты, и продолжал рендерить админку вместо редиректа на /login
+type SessionLostHandler = () => void;
+let onSessionLost: SessionLostHandler | null = null;
+
+export function setSessionLostHandler(handler: SessionLostHandler | null): void {
+  onSessionLost = handler;
+}
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
@@ -87,7 +96,10 @@ async function doRefresh(): Promise<boolean> {
     // иначе перезапуск бэкенда выкидывал бы на логин.
     if (res.status === 401) {
       // Другая вкладка могла успеть провернуть ротацию — не стираем её свежий токен
-      if (localStorage.getItem(REFRESH_KEY) === refreshToken) clearTokens();
+      if (localStorage.getItem(REFRESH_KEY) === refreshToken) {
+        clearTokens();
+        onSessionLost?.();
+      }
     }
     return false;
   }

@@ -115,6 +115,7 @@ class TmaMixin(ServiceBase):
             ip_address=ip_address,
             user_agent=user_agent,
         ) as logger:
+            await self.ensure_public_client_app(client_app_id)
             connector_key, tma_settings = await self.resolve_auth_connector(
                 AuthMethod.TMA,
                 client_app_id,

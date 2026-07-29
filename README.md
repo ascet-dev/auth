@@ -160,7 +160,8 @@ auth_logins                  — аудит всех попыток входа
 auth_identity_external_links — маппинг identity → внешние системы
 ```
 
-Все таблицы в схеме `auth`. Soft delete через поле `archived`. UUID v7 для PK (PostgreSQL 18+).
+Все таблицы в схеме `auth`. Soft delete через поле `archived`. PK — UUID: новые таблицы
+генерируют `uuidv7()` (PostgreSQL 18+), таблицы из первой миграции — `uuid_generate_v4()`.
 
 ## API
 

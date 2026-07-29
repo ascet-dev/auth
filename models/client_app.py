@@ -1,5 +1,5 @@
 from adc_aiopg.enum import sqla_enum
-from sqlalchemy import Column, String
+from sqlalchemy import Column, Index, String, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlmodel import Field
 
@@ -8,17 +8,22 @@ from models.enums import AuthClientType
 
 
 class ClientApp(BaseModel):
+    # Индексы объявлены в модели, иначе следующий autogenerate снесёт их из БД
+    __table_args__ = (Index("uq_auth_client_apps_key", "key", unique=True, postgresql_where=text("archived = false")),)
+
     # логический идентификатор клиента/аудитории
     key: str = Field(description="Например 'finqular-web', 'finqular-api', 'stronica-web'")
     name: str
 
     type: AuthClientType = Field(default=AuthClientType.PUBLIC, sa_column=sqla_enum(AuthClientType).sa_column)
 
-    allowed_redirect_uris: list[str] = Field(
+    # Колонки nullable, поэтому и аннотация optional: read-модели админки
+    # выводятся из этой модели и на NULL падали бы валидацией
+    allowed_redirect_uris: list[str] | None = Field(
         default=None,
         sa_column=Column(ARRAY(String)),
     )
-    allowed_scopes: list[str] = Field(
+    allowed_scopes: list[str] | None = Field(
         default=None,
         sa_column=Column(ARRAY(String)),
     )

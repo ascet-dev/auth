@@ -9,7 +9,7 @@ from adc_webkit.web import Ctx, Response
 from adc_webkit.web.openapi import Doc
 from pydantic import ValidationError as PydanticValidationError
 
-from models.enums import AuthMethod
+from models.enums import AdminRole, AuthMethod
 from web.endpoints.schemas import OkResponse
 
 from . import schemas as s
@@ -78,7 +78,7 @@ class AdminListConnectors(AdminList):
 
 class AdminGetConnector(AdminEndpoint):
     doc = Doc(tags=["admin", "connectors"], summary="Get connector")
-    query = s.ByIdPath
+    query = s.ConnectorPath
     response = Response(s.ConnectorRead)
 
     async def execute(self, ctx: Ctx) -> dict:
@@ -92,6 +92,7 @@ class AdminGetConnector(AdminEndpoint):
 
 class AdminCreateConnector(AdminEndpoint):
     doc = Doc(tags=["admin", "connectors"], summary="Create auth connector")
+    require_role = AdminRole.OWNER
     body = s.ConnectorCreate
     response = Response(s.ConnectorRead)
 
@@ -121,7 +122,8 @@ class AdminCreateConnector(AdminEndpoint):
 
 class AdminUpdateConnector(AdminEndpoint):
     doc = Doc(tags=["admin", "connectors"], summary="Update connector (key/type immutable)")
-    query = s.ByIdPath
+    require_role = AdminRole.OWNER
+    query = s.ConnectorPath
     body = s.ConnectorUpdate
     response = Response(s.ConnectorRead)
 
@@ -160,8 +162,9 @@ class AdminUpdateConnector(AdminEndpoint):
 
 class AdminArchiveConnector(AdminArchive):
     doc = Doc(tags=["admin", "connectors"], summary="Archive connector (soft delete)")
+    require_role = AdminRole.OWNER
     table = "connectors"
-    query = s.ByIdPath
+    query = s.ConnectorPath
     response = Response(OkResponse)
 
     async def execute(self, ctx: Ctx) -> dict:
@@ -177,7 +180,7 @@ class AdminArchiveConnector(AdminArchive):
 
 class AdminGetClientAppConnectors(AdminEndpoint):
     doc = Doc(tags=["admin", "client-apps"], summary="Connectors mapped to client app")
-    query = s.ByIdPath
+    query = s.ClientAppPath
     response = Response(list[s.ConnectorRead])
 
     async def execute(self, ctx: Ctx) -> list:  # type: ignore[override, unused-ignore]
@@ -194,7 +197,8 @@ class AdminSetClientAppConnectors(AdminEndpoint):
         tags=["admin", "client-apps"],
         summary="Replace client app connector mapping (empty = all enabled connectors)",
     )
-    query = s.ByIdPath
+    require_role = AdminRole.OWNER
+    query = s.ClientAppPath
     body = s.ClientAppConnectorsUpdate
     response = Response(list[s.ConnectorRead])
 

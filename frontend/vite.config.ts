@@ -9,7 +9,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // всё /admin/*, кроме самого SPA
-      "^/admin/(?!ui/)": { target: "http://localhost:8002" },
+      "^/admin/(?!ui(/|$))": { target: "http://localhost:8002" },
       "/auth": { target: "http://localhost:8002" },
     },
   },

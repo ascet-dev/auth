@@ -179,7 +179,12 @@ export function ClientAppsPage() {
             </Badge>
           ) : (
             <>
-              <Button size="compact-xs" variant="default" onClick={() => void openEdit(row)}>
+              <Button
+                size="compact-xs"
+                variant="default"
+                disabled={row.key === "auth-admin"}
+                onClick={() => void openEdit(row)}
+              >
                 Edit
               </Button>
               <Button
@@ -226,6 +231,7 @@ export function ClientAppsPage() {
       <DataTable
         data={query.data}
         isLoading={query.isLoading}
+        error={query.error as Error | null}
         columns={columns}
         page={page}
         pageSize={PAGE_SIZE}
