@@ -1,4 +1,6 @@
 import {
+  Alert,
+  Anchor,
   Badge,
   Button,
   Code,
@@ -9,12 +11,14 @@ import {
   Stack,
   Switch,
   TagsInput,
+  Text,
   TextInput,
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { api, qs } from "../api/client";
 import type { ClientApp, Connector, Paginated } from "../api/types";
@@ -43,6 +47,47 @@ const EMPTY_FORM: FormState = {
   access_token_ttl_sec: 900,
   refresh_token_ttl_sec: 2592000,
 };
+
+function IntegrationHint({ app }: { app?: ClientApp }) {
+  const [opened, setOpened] = useState(false);
+  const appId = app?.id ?? "<CLIENT_APP_ID>";
+
+  return (
+    <Alert variant="light" color="blue" title="Как залогинить пользователя в это приложение">
+      <Stack gap="xs">
+        <Text size="sm">
+          Создайте приложение, привяжите к нему коннектор (способ входа) на вкладке{" "}
+          <Anchor component={Link} to="/connectors" size="sm">
+            Connectors
+          </Anchor>
+          , затем отправляйте login-запросы с его <Code>client_app_id</Code>.
+        </Text>
+        <Anchor size="sm" component="button" type="button" ta="left" onClick={() => setOpened((v) => !v)}>
+          {opened ? "Скрыть примеры" : "Показать примеры запросов"}
+        </Anchor>
+        {opened && (
+          <Code block>
+            {`# вход по паролю
+POST /auth/login/password
+{"login": "user@example.com", "password": "...", "client_app_id": "${appId}"}
+
+# Telegram Mini App (connector нужен, если ботов несколько)
+POST /auth/tma/login
+{"init_data": "<Telegram.WebApp.initData>", "client_app_id": "${appId}"}
+
+# OAuth: provider — это key вашего OAUTH-коннектора
+POST /auth/oauth/start  {"provider": "google-web", "redirect_uri": "https://myapp/cb"}
+POST /auth/oauth/login  {"provider": "google-web", "code": "...", "redirect_uri": "...", "client_app_id": "${appId}"}
+
+# обновление сессии (access-токен живёт минуту)
+POST /auth/session/refresh
+{"refresh_token": "...", "client_app_id": "${appId}"}`}
+          </Code>
+        )}
+      </Stack>
+    </Alert>
+  );
+}
 
 export function ClientAppsPage() {
   const queryClient = useQueryClient();
@@ -156,7 +201,13 @@ export function ClientAppsPage() {
   return (
     <Stack>
       <Group justify="space-between">
-        <Title order={3}>Client Apps</Title>
+        <div>
+          <Title order={3}>Client Apps</Title>
+          <Text size="sm" c="dimmed">
+            Приложения, которые логинят пользователей. ID приложения передаётся как{" "}
+            <Code>client_app_id</Code> в каждый login-запрос.
+          </Text>
+        </div>
         <Group>
           <Switch
             label="Show archived"
@@ -169,6 +220,8 @@ export function ClientAppsPage() {
           <Button onClick={() => setForm({ ...EMPTY_FORM })}>New client app</Button>
         </Group>
       </Group>
+
+      <IntegrationHint app={query.data?.items.find((item) => item.key !== "auth-admin")} />
 
       <DataTable
         data={query.data}

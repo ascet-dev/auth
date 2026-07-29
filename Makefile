@@ -268,7 +268,7 @@ keys: ## Generate JWT keypair into secrets/ (skips if it already exists)
 		openssl rsa -in secrets/jwt_private.pem -pubout -out secrets/jwt_public.pem 2>/dev/null && \
 		chmod 644 secrets/jwt_private.pem secrets/jwt_public.pem && \
 		echo "JWT keypair created in secrets/ (gitignored)."; \
-		echo "⚠️  Локальные dev-ключи: файл читаемый всем, потому что в контейнере"; \
+		echo "⚠️  Ключи для локального стека: файл читаем всем, потому что в контейнере"; \
 		echo "   процесс идёт под своим uid (на нативном Linux он не совпадает с хостовым)."; \
 		echo "   Ключи для прода выдаёт секрет-стор платформы, не этот таргет."; \
 	fi
@@ -290,15 +290,17 @@ dev-init: ## Hybrid dev: deps + hooks + dockerized PG + local migrations/bootstr
 	$(MAKE) install-dev
 	@echo "2. Creating .env file..."
 	$(MAKE) env-example
-	@echo "3. Installing Git hooks..."
+	@echo "3. Generating JWT keypair..."
+	$(MAKE) keys
+	@echo "4. Installing Git hooks..."
 	$(MAKE) install-hooks
-	@echo "4. Starting infrastructure services..."
+	@echo "5. Starting infrastructure services..."
 	$(MAKE) docker-infra
-	@echo "5. Applying database migrations..."
+	@echo "6. Applying database migrations..."
 	$(MAKE) db-upgrade FORCE=true
-	@echo "6. Applying data migrations..."
+	@echo "7. Applying data migrations..."
 	$(MAKE) data-migration FORCE=true
-	@echo "7. Bootstrapping owner..."
+	@echo "8. Bootstrapping owner..."
 	uv run python manage.py bootstrap-owner
 	@echo "✅ Dev environment initialized!"
 	@echo ""
@@ -336,7 +338,8 @@ env-example: ## Create .env file (skips if it already exists)
 	else \
 		echo "PG__CONNECTION__DSN=postgresql://postgres:postgres@localhost:5432/auth" > .env; \
 		echo "APP__PORT=8002" >> .env; \
-		echo "AUTH__TELEGRAM_BOT_TOKEN=your-bot-token" >> .env; \
+		echo "AUTH__PRIVATE_KEY_PATH=secrets/jwt_private.pem" >> .env; \
+		echo "AUTH__PUBLIC_KEY_PATH=secrets/jwt_public.pem" >> .env; \
 		echo ".env created."; \
 	fi
 

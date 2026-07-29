@@ -1,29 +1,46 @@
-"""Схемы admin CRUD API. Read-модели явные — секреты не покидают сервис."""
+"""
+Схемы admin CRUD API.
 
-from datetime import datetime
+Read-модели выводятся из табличных моделей через `.exclude()` / `.only()`
+(adc_aiopg Base), чтобы не дублировать поля руками: секреты отсекаются
+на уровне модели ответа, а не только сериализацией.
+Search-модели наследуют `BaseSearch` из models/base.py.
+"""
+
 from uuid import UUID
 
-from adc_aiopg.types import Base
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
 
-from models.enums import AdminRole, AuthClientType, AuthMethod, CredentialType, IdentityStatus, SessionStatus
+from models.admin_grant import AuthAdminGrant
+from models.base import BaseSearch
+from models.client_app import ClientApp
+from models.connector import AuthConnector
+from models.credential import Credential
+from models.enums import AdminRole, AuthMethod, IdentityStatus, SessionStatus
+from models.identity import AuthIdentity
+from models.identity_external_link import AuthIdentityExternalLink
+from models.logins import Login
+from models.session import Session
 
 # ---------------------------------------------------------------- запросы
+
+PAGE_LIMIT_MAX = 200
 
 
 class ByIdPath(PydanticBaseModel):
     id: UUID
 
 
-class AdminSearch(PydanticBaseModel):
-    limit: int = Field(50, ge=1, le=200)
+class AdminSearch(BaseSearch):
+    """BaseSearch с потолком страницы: админка ходит в API из браузера."""
+
+    limit: int = Field(50, ge=1, le=PAGE_LIMIT_MAX)
     offset: int = Field(0, ge=0)
-    archived: bool = False
 
 
 class ClientAppSearch(AdminSearch):
-    pass
+    key: str | None = None
 
 
 class ConnectorSearch(AdminSearch):
@@ -41,102 +58,47 @@ class GrantSearch(AdminSearch):
     role: AdminRole | None = None
 
 
-class SessionSearch(PydanticBaseModel):
-    # Сессии фильтруются по status, а не archived
-    limit: int = Field(50, ge=1, le=200)
-    offset: int = Field(0, ge=0)
+class SessionSearch(AdminSearch):
+    # Сессии живут по status, а не по archived
+    archived: bool | None = None
     identity_id: UUID | None = None
     client_app_id: UUID | None = None
     status: SessionStatus | None = None
 
 
-class LoginSearch(PydanticBaseModel):
+class LoginSearch(AdminSearch):
     # Аудит append-only, archived не используется
-    limit: int = Field(50, ge=1, le=200)
-    offset: int = Field(0, ge=0)
+    archived: bool | None = None
     identity_id: UUID | None = None
     identifier: str | None = None
     method: str | None = None
     success: bool | None = None
-    created_ge: datetime | None = None
-    created_le: datetime | None = None
 
 
 # ---------------------------------------------------------------- read-модели
 
+ClientAppRead = ClientApp
+IdentityRead = AuthIdentity
+GrantRead = AuthAdminGrant
+LoginRead = Login
+ExternalLinkRead = AuthIdentityExternalLink
 
-class BaseRead(Base):
-    # Наследует adc_aiopg Base: элементы Paginated[B] должны быть его подтипом
-    id: UUID
-    created: datetime | None = None
-    updated: datetime | None = None
-    archived: bool | None = None
+# Хэш refresh-токена наружу не отдаём
+SessionRead = Session.exclude("refresh_token_hash")
 
+# Секреты в settings маскируются при сериализации (см. connectors.py):
+# в JSONB-поле их заменяют флаги <key>_set
+ConnectorRead = AuthConnector
 
-class ClientAppRead(BaseRead):
-    key: str
-    name: str
-    type: AuthClientType | None = None
-    allowed_redirect_uris: list[str] | None = None
-    allowed_scopes: list[str] | None = None
-    access_token_ttl_sec: int
-    refresh_token_ttl_sec: int
-
-
-class ConnectorRead(BaseRead):
-    key: str
-    type: AuthMethod
-    name: str
-    enabled: bool
-    # Секреты (bot_token, client_secret) заменены на флаги <key>_set
-    settings: dict = {}
-
-
-class IdentityRead(BaseRead):
-    tenant_id: str | None = None
-    status: IdentityStatus | None = None
-
-
-class SessionRead(BaseRead):
-    identity_id: UUID
-    client_app_id: UUID
-    refresh_expires_at: datetime
-    status: SessionStatus | None = None
-    last_used_at: datetime | None = None
-    ip: str | None = None
-    user_agent: str | None = None
-    device_id: str | None = None
-
-
-class LoginRead(BaseRead):
-    method: str
-    identifier: str | None = None
-    identity_id: UUID | None = None
-    credential_id: UUID | None = None
-    success: bool
-    ip_address: str | None = None
-    user_agent: str | None = None
-
-
-class GrantRead(BaseRead):
-    identity_id: UUID
-    role: AdminRole
-    granted_by: UUID | None = None
-
-
-class CredentialSummary(PydanticBaseModel):
-    id: UUID
-    type: CredentialType | None = None
-    identifier: str | None = None
-    provider: str | None = None
-    external_subject_id: str | None = None
-    last_used: datetime | None = None
-
-
-class ExternalLinkRead(BaseRead):
-    identity_id: UUID
-    external_system: str
-    external_user_id: str
+# Ни секретов, ни счётчиков блокировки — только то, что нужно карточке identity
+CredentialSummary = Credential.only(
+    "id",
+    "type",
+    "identifier",
+    "provider",
+    "external_subject_id",
+    "last_used",
+)
 
 
 class IdentityDetail(PydanticBaseModel):
@@ -150,55 +112,28 @@ class IdentityDetail(PydanticBaseModel):
 
 
 class ClientAppCreate(PydanticBaseModel):
-    key: str
-    name: str
-    type: AuthClientType = AuthClientType.PUBLIC
+    key: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1)
+    type: str = "PUBLIC"
     allowed_redirect_uris: list[str] = []
     allowed_scopes: list[str] = []
-    access_token_ttl_sec: int = 900
-    refresh_token_ttl_sec: int = 60 * 60 * 24 * 30
+    access_token_ttl_sec: int = Field(default=900, ge=1)
+    refresh_token_ttl_sec: int = Field(default=60 * 60 * 24 * 30, ge=1)
 
 
 class ClientAppUpdate(PydanticBaseModel):
-    # key immutable — идентификатор аудитории
-    name: str | None = None
-    type: AuthClientType | None = None
+    # key immutable — это идентификатор аудитории.
+    # Пишем поля явно: Base.partial() мутирует FieldInfo исходной модели
+    # (общие объекты полей), поэтому от него побочные эффекты на ClientAppCreate.
+    name: str | None = Field(default=None, min_length=1)
+    type: str | None = None
     allowed_redirect_uris: list[str] | None = None
     allowed_scopes: list[str] | None = None
-    access_token_ttl_sec: int | None = None
-    refresh_token_ttl_sec: int | None = None
-
-
-class OauthProviderCreate(PydanticBaseModel):
-    name: str
-    client_id: str
-    client_secret: str
-    auth_url: str
-    token_url: str
-    jwks_url: str | None = None
-    userinfo_url: str | None = None
-    enabled: bool = True
-
-
-class OauthProviderUpdate(PydanticBaseModel):
-    name: str | None = None
-    client_id: str | None = None
-    # None / отсутствие поля = не менять секрет
-    client_secret: str | None = None
-    auth_url: str | None = None
-    token_url: str | None = None
-    jwks_url: str | None = None
-    userinfo_url: str | None = None
-    enabled: bool | None = None
-
-
-class GrantCreate(PydanticBaseModel):
-    identity_id: UUID
-    role: AdminRole = AdminRole.ADMIN
+    access_token_ttl_sec: int | None = Field(default=None, ge=1)
+    refresh_token_ttl_sec: int | None = Field(default=None, ge=1)
 
 
 # ---------------------------------------------------------------- коннекторы
-
 
 # Типизированные settings по типу коннектора: без валидации в JSONB попадали
 # строки вместо чисел ("3") и ломали сравнения в login-флоу уже в рантайме.
@@ -262,3 +197,8 @@ class ConnectorUpdate(PydanticBaseModel):
 
 class ClientAppConnectorsUpdate(PydanticBaseModel):
     connector_ids: list[UUID]
+
+
+class GrantCreate(PydanticBaseModel):
+    identity_id: UUID
+    role: AdminRole = AdminRole.ADMIN

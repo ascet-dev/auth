@@ -5,6 +5,34 @@ import os
 os.environ.setdefault("ENV", "TEST")
 os.environ.setdefault("PG__CONNECTION__DSN", "postgresql://postgres:postgres@localhost:5432/auth_test")
 
+
+def _generate_test_keys() -> None:
+    """Эфемерная пара на прогон: захардкоженных ключей в репозитории больше нет."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    os.environ.setdefault(
+        "AUTH__PRIVATE_KEY",
+        key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode(),
+    )
+    os.environ.setdefault(
+        "AUTH__PUBLIC_KEY",
+        key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode(),
+    )
+
+
+_generate_test_keys()
+
 import subprocess  # noqa: E402
 from urllib.parse import urlparse  # noqa: E402
 

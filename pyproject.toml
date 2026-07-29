@@ -267,7 +267,9 @@ disallow_untyped_defs = false
 disable_error_code = ["override"]
 
 [[tool.mypy.overrides]]
-module = ["services.service"]
+# Миксины бизнес-логики видят атрибуты и методы друг друга только через MRO
+# готового App, поэтому attr-defined здесь неинформативен
+module = ["services.service", "services.service.*"]
 disable_error_code = ["assignment", "attr-defined"]
 
 [[tool.mypy.overrides]]

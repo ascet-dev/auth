@@ -27,16 +27,10 @@ def cli() -> None:
 @cli.command(short_help="start web")
 def start_web() -> None:
     """Start REST API application."""
-    # Дефолтные ключи лежат в публичном репозитории: с ними кто угодно подпишет
-    # себе админский токен. Вне LOCAL/TEST это фатально, поэтому fail-fast.
-    if cfg.auth.uses_dev_keys and cfg.env not in ("LOCAL", "TEST"):
-        raise click.ClickException(
-            f"Refusing to start in ENV={cfg.env} with the development JWT keys bundled in the repo. "
-            f"Generate a keypair (make keys) and pass AUTH__PRIVATE_KEY_PATH / AUTH__PUBLIC_KEY_PATH "
-            f"(or AUTH__PRIVATE_KEY / AUTH__PUBLIC_KEY).",
-        )
-    if cfg.auth.uses_dev_keys:
-        logger.warning("Using development JWT keys from the repository — never do this outside local dev")
+    try:
+        cfg.auth.require_keys()
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
 
     if cfg.logs.sentry.enabled:
         sentry_sdk.init(

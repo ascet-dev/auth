@@ -1,7 +1,7 @@
 """initial schema
 
 Revision ID: 0001
-Revises: 
+Revises:
 Create Date: 2026-04-23 00:32:00.197123
 
 """
@@ -157,7 +157,10 @@ def downgrade():
     op.drop_table('auth_otp_challenges', schema='auth')
     op.drop_table('auth_identity_external_links', schema='auth')
     op.drop_table('auth_credentials', schema='auth')
-    op.drop_table('auth_oauth_providers', schema='auth')
+    op.execute('DROP TABLE IF EXISTS auth.auth_oauth_providers')  # мог быть удалён в 0002
     op.drop_table('auth_identities', schema='auth')
     op.drop_table('auth_client_apps', schema='auth')
     # ### end Alembic commands ###
+    # Без этого downgrade base + upgrade head падал на "type already exists"
+    for enum_name in ('auth_client_type', 'identity_status', 'credential_type', 'otp_channel', 'session_status'):
+        op.execute(f'DROP TYPE IF EXISTS auth.{enum_name}')

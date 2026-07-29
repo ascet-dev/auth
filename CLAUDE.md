@@ -19,7 +19,14 @@
 │   ├── admin_grant.py   # AuthAdminGrant (identity_id, role, granted_by) — админские права
 │   └── identity_external_link.py  # Маппинг identity → внешняя система
 ├── services/
-│   ├── service.py       # App (BaseApp) — ВСЯ бизнес-логика: login_by_*, resolve_auth_connector, sessions, JWT, bootstrap_owner, гранты
+│   ├── service/         # Бизнес-логика, разложенная по миксинам (импорт прежний: from services import App)
+│   │   ├── app.py       # class App — компоненты (DI) + сборка миксинов + log_login_attempt
+│   │   ├── base.py      # ServiceBase — аннотации атрибутов, которые миксины получают от App
+│   │   ├── constants.py, errors.py
+│   │   ├── connectors.py    # resolve_auth_connector — выбор способа входа для приложения
+│   │   ├── passwords.py, otp.py, tma.py, oauth.py, credentials.py
+│   │   ├── admin.py     # bootstrap_owner, гранты, login_by_admin
+│   │   ├── sessions.py, tokens.py, identity.py, maintenance.py
 │   ├── repositories.py  # DAO (PostgresAccessLayer + 10 TableDescriptor)
 │   ├── password_service.py  # Argon2id хеширование
 │   ├── login_attempt_logger.py  # Async context manager для аудита логинов
@@ -44,7 +51,7 @@
 │       ├── admin_auth.py     # AdminLogin, AdminRefreshSession, AdminMe
 │       └── admin/            # Admin CRUD API (auth = admin_jwt)
 │           ├── base.py       # AdminEndpoint (guard+роли), generic AdminList/Get/Create/Update/Archive, Conflict(409)
-│           ├── schemas.py    # Search/Read/Write модели (read-модели явные — секреты маскируются)
+│           ├── schemas.py    # read-модели выводятся из табличных через .exclude()/.only(), search — из BaseSearch
 │           ├── client_apps.py, identities.py, sessions.py, logins.py, grants.py
 │           └── connectors.py # CRUD /admin/connectors + маппинг /admin/client-apps/{id}/connectors
 ├── frontend/            # Админский SPA: React + Vite + TS + Mantine + TanStack Query
@@ -58,8 +65,8 @@
 │   ├── postgres.py      # DSN, pool, schema_name="auth"
 │   ├── app.py           # host, port, CORS
 │   └── env.py, doc.py, logs.py, s3.py, sentry.py, telemetry.py
-├── alembic/             # Миграции (env.py использует DAO.meta, сам создаёт схему auth)
-│   └── versions/        # 0001 initial, 0002 admin grants (+partial unique index)
+├── alembic/             # Миграции (env.py использует DAO.meta и создаёт схему auth до alembic_version)
+│   └── versions/        # 0001 initial, 0002 admin grants + connectors + unique client app key
 ├── tests/               # pytest против реального PG (auth_test): conftest пересоздаёт БД + alembic
 ├── data/init_data.sql   # Тестовые данные: только test-app client (админ — через bootstrap-owner)
 ├── manage.py            # CLI: start-web, apply-sql, seed-data, bootstrap-owner
@@ -217,11 +224,12 @@ AUTH__PUBLIC_KEY="..."   # PEM public key
 AUTH__PRIVATE_KEY="..."  # PEM private key (не хранить в репо)
 ```
 
-Тестовые RSA-ключи зашиты в `settings/auth.py` **только для LOCAL/TEST**: они лежат в
-публичном репозитории, поэтому вне этих окружений `manage.py start-web` отказывается
-стартовать. Ключи для остальных окружений: `make keys` генерирует пару в `secrets/`
-(gitignored, монтируется в контейнер), пути — `AUTH__PRIVATE_KEY_PATH` /
-`AUTH__PUBLIC_KEY_PATH`; можно и содержимым через `AUTH__PRIVATE_KEY` / `AUTH__PUBLIC_KEY`.
+**RSA-ключей по умолчанию нет** — ни dev-, ни каких-либо: захардкоженная пара в репозитории
+означала бы, что любой может выписать себе токен, включая админский. Без ключей `start-web`
+не стартует (проверка `cfg.auth.require_keys()`, без эвристик по имени окружения).
+`make keys` генерирует пару в `secrets/` (gitignored, монтируется в контейнер),
+пути — `AUTH__PRIVATE_KEY_PATH` / `AUTH__PUBLIC_KEY_PATH`, содержимое —
+`AUTH__PRIVATE_KEY` / `AUTH__PUBLIC_KEY`. Тесты генерируют эфемерную пару в `conftest.py`.
 
 ## Соглашения
 
