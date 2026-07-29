@@ -11,7 +11,7 @@ class Auth(BaseSettings):
     access_token_lifetime: timedelta = timedelta(minutes=1)
     refresh_token_lifetime: timedelta = timedelta(days=30)
 
-    # Telegram Mini App
+    # Telegram Mini App (fallback, если нет TMA-коннектора)
     telegram_bot_token: str | None = None
     tma_auth_date_max_age: int = 300  # секунд, максимальный возраст auth_date
 
@@ -20,76 +20,40 @@ class Auth(BaseSettings):
     owner_login: str = "admin"
     owner_password: str | None = None
 
-    # Ключи можно передать файлами (удобнее многострочных env): PEM читается при старте
+    # RSA-ключи для подписи access-токенов. Дефолтов нет и быть не может:
+    # захардкоженная пара в репозитории означала бы, что любой может выписать
+    # себе токен (включая админский). Передаются либо содержимым, либо путями
+    # к PEM (удобнее для docker/k8s), генерируются `make keys`.
+    private_key: str | None = None
+    public_key: str | None = None
     private_key_path: Path | None = None
     public_key_path: Path | None = None
 
-    # TEST/DEVELOPMENT KEYS ONLY - DO NOT USE IN PRODUCTION!
-    # Эти ключи лежат в публичном репозитории: подписав ими токен, кто угодно
-    # получит и админский доступ. Вне LOCAL/TEST старт с ними блокируется
-    # (см. uses_dev_keys и проверку в manage.py start-web).
-    public_key: str = """-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtD/nFYH4CXN7Jy7zudpb
-Wj+pghUczDQCX8rFMJDfWxyWlTy5Vc9/4/uNvOzMHzOJNix1Av08cvAkHkeLF3AK
-fxUv2ADVr9LVbOEDTzvBQ1TqXmwOaplQD7mVxIqpiDES41S1ESlkK3gcu5dRfuxp
-ZXJs9m2903Y1O0GphCK1XFCEkdjaffwNduAFYi/YPgo+0uM6O153DgQTQfz5THoM
-+TNZNMR4ijtAyfIt/H7AsDHffJPUcQIBhiIQ6stEvrnG8wST2ZMT3kz3K1f3iEF/
-586y+0quTF2pLXPQz8G6Pzslc0FVDKuU5TKmUFEv6I/l0G94LOKt21REeyRUucHW
-awIDAQAB
------END PUBLIC KEY-----
-"""
-    # TEST/DEVELOPMENT KEYS ONLY - DO NOT USE IN PRODUCTION!
-    # In production, load private key from environment variable: JWT_PRIVATE_KEY
-    private_key: str = """-----BEGIN RSA PRIVATE KEY-----
-MIIEpQIBAAKCAQEAtD/nFYH4CXN7Jy7zudpbWj+pghUczDQCX8rFMJDfWxyWlTy5
-Vc9/4/uNvOzMHzOJNix1Av08cvAkHkeLF3AKfxUv2ADVr9LVbOEDTzvBQ1TqXmwO
-aplQD7mVxIqpiDES41S1ESlkK3gcu5dRfuxpZXJs9m2903Y1O0GphCK1XFCEkdja
-ffwNduAFYi/YPgo+0uM6O153DgQTQfz5THoM+TNZNMR4ijtAyfIt/H7AsDHffJPU
-cQIBhiIQ6stEvrnG8wST2ZMT3kz3K1f3iEF/586y+0quTF2pLXPQz8G6Pzslc0FV
-DKuU5TKmUFEv6I/l0G94LOKt21REeyRUucHWawIDAQABAoIBAChrph34Gc/Awk68
-pDI6yb6YxSHjKySNyzSBC6xC6JuNcyU/S053bDYLXLMPpQygKXZpDMphUHNz752M
-rJ/SY8Aw15xIP6Mgk/TJFs1nWIUJX09SSv9TpxUHqJK9B5x/aL1q6vnQvuJSmprk
-qYVdbZsuyEmQvX9UpEZICMQVZncvRNnMLLelrUM4QJjGWoPEldmZDtrVhberckFi
-sq/Iq70jhnWAAKDbhoOzfVunhVWy69HPyMUQ3dxoQ9uGZmWS0zzkRucLLjcrIQXB
-gAQqfIKe8WY/VfyX7f3jjiZLOM3LiE8uJ8oA2tx4AAR8qCEMPR1KF4ARHjjFgTPh
-ayKHXvkCgYEA2VE8F2JmHfDxM+1/49rcyqDOpnBbi1QDkTVuZDjwHwvKvGtRrFtY
-6t6uoLTABH9lstNOGducuWRBMlLNuredrZ1w5IUy9t7c1SKTIzNe/Xhc/DCbieNg
-lwf0AzpP3aBkuegjKVxwO/zmyZf968iyfUL5JRhgtXSaxxcQIqS4RgMCgYEA1FWO
-8tJiOoOmlZX54pDHb9H7EV6JOKViNFPw+RIw+Dd4WVJ+dRuAr7FzI84VV9gPZP2W
-eUXx1n51cy6yMbRh7UBebfVy01o4bpfgDP45g9F60uldIz6H6sqJKkg+2SUiEcmp
-a2nY7oF9u7y2OxSUYD5A/+RyQNT1HaqLua6jlXkCgYEA0NM+6zmi5yKgpUWTn2Cw
-ygW8jjNpxHj29JJjges00qCCMIzv7q/Ywdk59TO7UJcbIrvqUO63q26rN7BaARJw
-cmTYFr/oOVHu4uBWg3zZyrfeongS/m2AY6FA2dku5ck7AWoQX650KzDalN15Ixm4
-aqXww7SpObTTBn0jBCdE7AECgYEAyzDw8aeoPmybbkwt68U2ROiBRTbdQ6roFkE5
-uW/SEsYqUfficbiW5gp+r4XX4M8utCsD4xuu+N7dEBNgjLYcfAh8FOesMVsF47dM
-vcJOUbmVut18tmxxbprQtfiaw/uH5dPAX7zTzjF2m8BT9qeT8aHBW99GAoqH4hLB
-UTgw7KkCgYEAmMdNwdmiUzv+ZFJY5BP2HpnRTqBjv84PL13GvLvFBD4ZPnvFsVWC
-JznMexvoqPBcexlDthimp/fZGx8NrqhvQnOeWiePCdUMRkkp/1c0zvPh9zZ+NCir
-uF2ndSF/IXss+GMHYPwu3OgTD2NRGuVR+5LjiQPRnx861/djZbvh2ok=
------END RSA PRIVATE KEY-----
-"""
-
     @model_validator(mode="after")
     def _load_keys_from_files(self) -> "Auth":
-        """PEM из файлов приоритетнее: многострочные env неудобны и в compose, и в k8s."""
         for field, path in (("private_key", self.private_key_path), ("public_key", self.public_key_path)):
             if not path:
                 continue
             try:
                 setattr(self, field, path.read_text(encoding="utf-8"))
             except OSError as e:
-                # Молчаливого отката на dev-ключи быть не должно, но и сырой
-                # FileNotFoundError непонятен — говорим, что делать.
+                env_name = f"AUTH__{field.upper()}_PATH"
                 raise ValueError(
                     f"Cannot read JWT {field} from {path}: {e.strerror}. "
                     f"Run 'make keys' to generate a keypair in ./secrets, "
-                    f"or unset AUTH__{field.upper()}_PATH to use AUTH__{field.upper()}.",
+                    f"or unset {env_name} to pass the key contents instead.",
                 ) from e
         return self
 
-    @property
-    def uses_dev_keys(self) -> bool:
-        """Работаем на ключах из репозитория (подпись токенов публично воспроизводима)."""
-        dev_public = type(self).model_fields["public_key"].default
-        dev_private = type(self).model_fields["private_key"].default
-        return self.public_key.strip() == dev_public.strip() or self.private_key.strip() == dev_private.strip()
+    def require_keys(self) -> None:
+        """
+        Проверка перед стартом того, что подписывает или проверяет токены.
+        Не в валидаторе: CLI-командам вроде apply-sql ключи не нужны.
+        """
+        missing = [name for name in ("private_key", "public_key") if not getattr(self, name)]
+        if missing:
+            raise ValueError(
+                f"JWT keys are not configured ({', '.join(missing)}). "
+                f"Run 'make keys' to generate a keypair in ./secrets, then pass "
+                f"AUTH__PRIVATE_KEY_PATH / AUTH__PUBLIC_KEY_PATH (or AUTH__PRIVATE_KEY / AUTH__PUBLIC_KEY).",
+            )
